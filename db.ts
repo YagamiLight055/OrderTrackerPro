@@ -27,7 +27,7 @@ export class OrderTrackerDB extends Dexie {
 
   constructor() {
     super('OrderTrackerDB');
-    // Fix: Explicitly using the inherited 'version' method from the Dexie base class.
+    // Define the database version and schema using the inherited 'version' method.
     this.version(4).stores({
       orders: '++id, customer, city, material, qty, status, createdAt',
       customersMaster: '++id, &name',

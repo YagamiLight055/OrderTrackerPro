@@ -4,10 +4,13 @@ import { db } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { SummaryRow } from '../types';
 
+const STATUS_OPTIONS = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
+
 const Summary: React.FC = () => {
   const [filterCity, setFilterCity] = useState('');
   const [filterCustomer, setFilterCustomer] = useState('');
   const [filterMaterial, setFilterMaterial] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -19,6 +22,7 @@ const Summary: React.FC = () => {
       const cityMatch = !filterCity || o.city.trim() === filterCity;
       const customerMatch = !filterCustomer || o.customer.trim() === filterCustomer;
       const materialMatch = !filterMaterial || o.material.trim() === filterMaterial;
+      const statusMatch = !filterStatus || o.status === filterStatus;
       
       const orderDate = new Date(o.createdAt).setHours(0,0,0,0);
       const start = startDate ? new Date(startDate).setHours(0,0,0,0) : null;
@@ -27,9 +31,9 @@ const Summary: React.FC = () => {
       const matchesStart = !start || orderDate >= start;
       const matchesEnd = !end || orderDate <= end;
 
-      return cityMatch && customerMatch && materialMatch && matchesStart && matchesEnd;
+      return cityMatch && customerMatch && materialMatch && statusMatch && matchesStart && matchesEnd;
     });
-  }, [orders, filterCity, filterCustomer, filterMaterial, startDate, endDate]);
+  }, [orders, filterCity, filterCustomer, filterMaterial, filterStatus, startDate, endDate]);
 
   const summaryData = useMemo(() => {
     const groups: Record<string, SummaryRow> = {};
@@ -73,12 +77,13 @@ const Summary: React.FC = () => {
     [orders]
   );
 
-  const hasActiveFilters = filterCity || filterCustomer || filterMaterial || startDate || endDate;
+  const hasActiveFilters = filterCity || filterCustomer || filterMaterial || filterStatus || startDate || endDate;
 
   const clearFilters = () => {
     setFilterCity('');
     setFilterCustomer('');
     setFilterMaterial('');
+    setFilterStatus('');
     setStartDate('');
     setEndDate('');
   };
@@ -116,12 +121,19 @@ const Summary: React.FC = () => {
              </button>
            )}
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           <div className="flex flex-col">
              <label className="text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">Customer</label>
              <select value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)} className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none">
                 <option value="">All Customers</option>
                 {customers.map(c => <option key={c} value={c}>{c}</option>)}
+             </select>
+          </div>
+          <div className="flex flex-col">
+             <label className="text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">Status</label>
+             <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <option value="">All Statuses</option>
+                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
              </select>
           </div>
           <div className="flex flex-col">
