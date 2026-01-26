@@ -74,21 +74,35 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
     }
   }, [editId]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-
-    Array.from(files).forEach(file => {
+  const readFileAsDataURL = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({
-          ...prev,
-          attachments: [...prev.attachments, reader.result as string]
-        }));
-      };
-      // Fix: Cast 'file' to Blob to resolve the TypeScript error where it's inferred as 'unknown' in some environments.
-      reader.readAsDataURL(file as Blob);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+      reader.readAsDataURL(file);
     });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    try {
+      const newAttachments = await Promise.all(
+        Array.from(files).map(file => readFileAsDataURL(file))
+      );
+      
+      setFormData(prev => ({
+        ...prev,
+        attachments: [...prev.attachments, ...newAttachments]
+      }));
+    } catch (err) {
+      console.error("Error reading files:", err);
+      alert("Failed to read one or more images. Please try again.");
+    } finally {
+      // Clear the input value so the same file can be selected again if needed
+      if (e.target) e.target.value = '';
+    }
   };
 
   const removeAttachment = (index: number) => {
@@ -120,7 +134,6 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
 
     try {
       if (editId) {
-        // Fix: Cast to any to bypass Dexie's UpdateSpec requirement for index signatures on array fields.
         await db.orders.update(editId, orderData as any);
       } else {
         await db.orders.add(orderData);
@@ -240,7 +253,6 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
               className="hidden"
               accept="image/*"
               multiple
-              capture="environment"
             />
           </div>
 
