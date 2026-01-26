@@ -1,22 +1,23 @@
 
-const CACHE_NAME = 'order-tracker-v4';
+const CACHE_NAME = 'order-tracker-v5';
 const CORE_ASSETS = [
+  './',
   'index.html',
-  'manifest.json'
+  'manifest.json',
+  'https://cdn.tailwindcss.com',
+  'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js'
 ];
 
-// Install Event
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Use relative paths for local assets
-      return cache.addAll(CORE_ASSETS);
+      // Use relative paths to ensure it works on subdirectories
+      return cache.addAll(CORE_ASSETS).catch(err => console.warn("Pre-cache failed for some assets", err));
     })
   );
 });
 
-// Activate Event
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -31,23 +32,14 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch Event
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) return cachedResponse;
-
-      return fetch(event.request).then((networkResponse) => {
-        // Cache external CDNs and local assets on the fly
-        const isSafeToCache = 
-          networkResponse.status === 200 && 
-          (event.request.url.includes('cdn.tailwindcss.com') || 
-           event.request.url.includes('cdnjs.cloudflare.com') ||
-           event.request.url.startsWith(self.location.origin));
-
-        if (isSafeToCache) {
+      // If we have it in cache, return it, but also update it in the background
+      const fetchPromise = fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseToCache);
@@ -55,12 +47,14 @@ self.addEventListener('fetch', (event) => {
         }
         return networkResponse;
       }).catch(() => {
-        // Return index.html for navigation requests (SPA support)
+        // Fallback for offline navigation
         if (event.request.mode === 'navigate') {
           return caches.match('index.html');
         }
         return null;
       });
+
+      return cachedResponse || fetchPromise;
     })
   );
 });
