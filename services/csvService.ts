@@ -4,20 +4,48 @@
 declare const Papa: any;
 
 export const exportToCSV = (data: any[], filename: string) => {
-  const csv = Papa.unparse(data);
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  link.setAttribute('href', url);
-  link.setAttribute('download', filename);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  if (typeof Papa === 'undefined') {
+    alert("CSV Library (PapaParse) is not available. Please check your internet connection.");
+    return;
+  }
+
+  // Pre-process: PapaParse unparse doesn't handle nested arrays/objects for CSV.
+  // We stringify the attachments array so it occupies a single CSV cell as valid JSON.
+  const processedData = data.map(item => {
+    const newItem = { ...item };
+    if (newItem.attachments && Array.isArray(newItem.attachments)) {
+      newItem.attachments = JSON.stringify(newItem.attachments);
+    }
+    return newItem;
+  });
+
+  try {
+    const csv = Papa.unparse(processedData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Clean up to prevent memory leaks with large files
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  } catch (error) {
+    console.error("Export error:", error);
+    alert("Error generating CSV. The data might be too large for the browser to process.");
+  }
 };
 
 export const parseCSV = (file: File): Promise<any[]> => {
   return new Promise((resolve, reject) => {
+    if (typeof Papa === 'undefined') {
+      reject(new Error("PapaParse not loaded"));
+      return;
+    }
     Papa.parse(file, {
       header: true,
       dynamicTyping: true,

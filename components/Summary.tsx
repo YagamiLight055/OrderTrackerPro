@@ -6,25 +6,35 @@ import { SummaryRow } from '../types';
 
 const Summary: React.FC = () => {
   const [filterCity, setFilterCity] = useState('');
+  const [filterCustomer, setFilterCustomer] = useState('');
   const [filterMaterial, setFilterMaterial] = useState('');
-  const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const orders = useLiveQuery(() => db.orders.toArray());
 
-  const summaryData = useMemo(() => {
+  const filteredOrders = useMemo(() => {
     if (!orders) return [];
+    return orders.filter(o => {
+      const cityMatch = !filterCity || o.city.trim() === filterCity;
+      const customerMatch = !filterCustomer || o.customer.trim() === filterCustomer;
+      const materialMatch = !filterMaterial || o.material.trim() === filterMaterial;
+      
+      const orderDate = new Date(o.createdAt).setHours(0,0,0,0);
+      const start = startDate ? new Date(startDate).setHours(0,0,0,0) : null;
+      const end = endDate ? new Date(endDate).setHours(23,59,59,999) : null;
+      
+      const matchesStart = !start || orderDate >= start;
+      const matchesEnd = !end || orderDate <= end;
 
-    const filtered = orders.filter(o => {
-      const cityMatch = !filterCity || o.city === filterCity;
-      const materialMatch = !filterMaterial || o.material === filterMaterial;
-      const startMatch = !dateRange.start || o.createdAt >= new Date(dateRange.start).getTime();
-      const endMatch = !dateRange.end || o.createdAt <= new Date(dateRange.end).getTime() + 86400000;
-      return cityMatch && materialMatch && startMatch && endMatch;
+      return cityMatch && customerMatch && materialMatch && matchesStart && matchesEnd;
     });
+  }, [orders, filterCity, filterCustomer, filterMaterial, startDate, endDate]);
 
+  const summaryData = useMemo(() => {
     const groups: Record<string, SummaryRow> = {};
 
-    filtered.forEach(o => {
+    filteredOrders.forEach(o => {
       const key = `${o.city.trim()}|${o.customer.trim()}|${o.material.trim()}`;
       if (!groups[key]) {
         groups[key] = {
@@ -40,60 +50,112 @@ const Summary: React.FC = () => {
     });
 
     return Object.values(groups).sort((a, b) => b.totalQty - a.totalQty);
-  }, [orders, filterCity, filterMaterial, dateRange]);
+  }, [filteredOrders]);
 
   const stats = useMemo(() => {
-    if (!orders) return { totalOrders: 0, totalQty: 0, uniqueCustomers: 0 };
     return {
-      totalOrders: orders.length,
-      totalQty: orders.reduce((sum, o) => sum + o.qty, 0),
-      uniqueCustomers: new Set(orders.map(o => o.customer)).size
+      totalOrders: filteredOrders.length,
+      totalQty: filteredOrders.reduce((sum, o) => sum + o.qty, 0),
+      uniqueCustomers: new Set(filteredOrders.map(o => o.customer.trim())).size
     };
-  }, [orders]);
+  }, [filteredOrders]);
 
-  const cities = useMemo(() => Array.from(new Set((orders || []).map(o => o.city))).sort(), [orders]);
-  const materials = useMemo(() => Array.from(new Set((orders || []).map(o => o.material))).sort(), [orders]);
+  const cities = useMemo(() => 
+    Array.from(new Set((orders || []).map(o => o.city.trim()))).sort() as string[], 
+    [orders]
+  );
+  const customers = useMemo(() => 
+    Array.from(new Set((orders || []).map(o => o.customer.trim()))).sort() as string[], 
+    [orders]
+  );
+  const materials = useMemo(() => 
+    Array.from(new Set((orders || []).map(o => o.material.trim()))).sort() as string[], 
+    [orders]
+  );
+
+  const hasActiveFilters = filterCity || filterCustomer || filterMaterial || startDate || endDate;
+
+  const clearFilters = () => {
+    setFilterCity('');
+    setFilterCustomer('');
+    setFilterMaterial('');
+    setStartDate('');
+    setEndDate('');
+  };
 
   if (!orders) return <div className="p-12 text-center text-gray-400 font-bold">Aggregating data...</div>;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Stats Dashboard */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50">
-          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Total Entries</p>
-          <p className="text-3xl font-black text-indigo-600">{stats.totalOrders}</p>
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50 group hover:border-indigo-100 transition-colors">
+          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Entries Found</p>
+          <p className="text-3xl font-black text-indigo-600 transition-all group-hover:scale-105 origin-left">{stats.totalOrders}</p>
         </div>
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50">
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50 group hover:border-indigo-100 transition-colors">
           <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Accumulated Qty</p>
-          <p className="text-3xl font-black text-indigo-600">{stats.totalQty.toLocaleString()}</p>
+          <p className="text-3xl font-black text-indigo-600 transition-all group-hover:scale-105 origin-left">{stats.totalQty.toLocaleString()}</p>
         </div>
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50">
-          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Unique Clients</p>
-          <p className="text-3xl font-black text-indigo-600">{stats.uniqueCustomers}</p>
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50 group hover:border-indigo-100 transition-colors">
+          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Filtered Clients</p>
+          <p className="text-3xl font-black text-indigo-600 transition-all group-hover:scale-105 origin-left">{stats.uniqueCustomers}</p>
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-3xl shadow-xl shadow-gray-200/40 border border-gray-100">
+      {/* Advanced Filter Panel */}
+      <div className="bg-white p-6 rounded-[2rem] shadow-xl shadow-gray-200/40 border border-gray-100 space-y-4">
+        <div className="flex items-center justify-between mb-2">
+           <h2 className="text-xl font-black text-gray-900 tracking-tight">Analysis Filters</h2>
+           {hasActiveFilters && (
+             <button 
+               onClick={clearFilters}
+               className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline decoration-2 underline-offset-4"
+             >
+               Reset All Filters
+             </button>
+           )}
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="flex flex-col">
+             <label className="text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">Customer</label>
+             <select value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)} className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <option value="">All Customers</option>
+                {customers.map(c => <option key={c} value={c}>{c}</option>)}
+             </select>
+          </div>
+          <div className="flex flex-col">
+             <label className="text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">Location</label>
+             <select value={filterCity} onChange={(e) => setFilterCity(e.target.value)} className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <option value="">All Cities</option>
+                {cities.map(c => <option key={c} value={c}>{c}</option>)}
+             </select>
+          </div>
+          <div className="flex flex-col">
+             <label className="text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">Material</label>
+             <select value={filterMaterial} onChange={(e) => setFilterMaterial(e.target.value)} className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <option value="">All Materials</option>
+                {materials.map(m => <option key={m} value={m}>{m}</option>)}
+             </select>
+          </div>
+          <div className="flex flex-col">
+             <label className="text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">From</label>
+             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+          </div>
+          <div className="flex flex-col">
+             <label className="text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">To</label>
+             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+          </div>
+        </div>
+      </div>
+
+      {/* Results Table */}
+      <div className="bg-white p-6 rounded-[2rem] shadow-xl shadow-gray-200/40 border border-gray-100 overflow-hidden">
         <header className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
           <h2 className="text-2xl font-black text-gray-900 tracking-tight">Consolidated View</h2>
-          <div className="flex flex-wrap gap-2">
-             <select
-              value={filterCity}
-              onChange={(e) => setFilterCity(e.target.value)}
-              className="px-3 py-2 bg-gray-50 border-none rounded-xl text-xs font-bold text-gray-600 focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">All Cities</option>
-              {cities.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <select
-              value={filterMaterial}
-              onChange={(e) => setFilterMaterial(e.target.value)}
-              className="px-3 py-2 bg-gray-50 border-none rounded-xl text-xs font-bold text-gray-600 focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">All Materials</option>
-              {materials.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
+          <span className="text-[10px] font-black bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full uppercase tracking-widest">
+            {summaryData.length} Groups matched
+          </span>
         </header>
 
         <div className="overflow-x-auto">
@@ -129,7 +191,7 @@ const Summary: React.FC = () => {
             {summaryData.length > 0 && (
               <tfoot className="border-t-2 border-indigo-100">
                 <tr className="bg-indigo-50/30">
-                  <td colSpan={3} className="py-4 px-4 text-xs font-black text-indigo-400 uppercase tracking-widest text-right">Totals</td>
+                  <td colSpan={3} className="py-4 px-4 text-xs font-black text-indigo-400 uppercase tracking-widest text-right">Filtered Totals</td>
                   <td className="py-4 px-2 text-sm text-center font-black text-indigo-900">{summaryData.reduce((acc, curr) => acc + curr.orderCount, 0)}</td>
                   <td className="py-4 px-2 text-lg text-right font-black text-indigo-700">{summaryData.reduce((acc, curr) => acc + curr.totalQty, 0).toLocaleString()}</td>
                 </tr>

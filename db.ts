@@ -1,6 +1,6 @@
 
-// Fix: Use named import for Dexie to ensure subclass correctly inherits properties like version().
-import { Dexie, Table } from 'dexie';
+// Fix: Use named import for Dexie to ensure the class type is correctly inherited and the 'version' method is recognized.
+import { Dexie, type Table } from 'dexie';
 
 export interface Order {
   id?: number;
@@ -27,7 +27,7 @@ export class OrderTrackerDB extends Dexie {
 
   constructor() {
     super('OrderTrackerDB');
-    // Fix: Using named import for Dexie ensures the 'version' property is correctly typed on the instance.
+    // Fix: Explicitly using the inherited 'version' method from the Dexie base class.
     this.version(4).stores({
       orders: '++id, customer, city, material, qty, status, createdAt',
       customersMaster: '++id, &name',

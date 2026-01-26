@@ -31,6 +31,7 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
     attachments: []
   });
 
+  const [isProcessingImages, setIsProcessingImages] = useState(false);
   const [options, setOptions] = useState<{ customers: string[], cities: string[], materials: string[] }>({
     customers: [],
     cities: [],
@@ -74,6 +75,32 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
     }
   }, [editId]);
 
+  // Helper to resize and compress images before storing as base64
+  // This is CRITICAL for preventing browser memory crashes with high-res mobile photos.
+  const downscaleImage = (dataUrl: string, maxWidth = 1200, quality = 0.7): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = dataUrl;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = (maxWidth / width) * height;
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(dataUrl); // Fallback to original if error
+    });
+  };
+
   const readFileAsDataURL = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -87,20 +114,27 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    setIsProcessingImages(true);
     try {
-      const newAttachments = await Promise.all(
-        Array.from(files).map(file => readFileAsDataURL(file))
+      // Fix: Cast each item from Array.from(files) to File to resolve 'unknown' type inference.
+      const rawDataUrls = await Promise.all(
+        Array.from(files).map(file => readFileAsDataURL(file as File))
+      );
+      
+      // Resize all images to keep IndexedDB and CSV exports stable
+      const optimizedAttachments = await Promise.all(
+        rawDataUrls.map(url => downscaleImage(url))
       );
       
       setFormData(prev => ({
         ...prev,
-        attachments: [...prev.attachments, ...newAttachments]
+        attachments: [...prev.attachments, ...optimizedAttachments]
       }));
     } catch (err) {
       console.error("Error reading files:", err);
-      alert("Failed to read one or more images. Please try again.");
+      alert("Failed to process one or more images. Please try again.");
     } finally {
-      // Clear the input value so the same file can be selected again if needed
+      setIsProcessingImages(false);
       if (e.target) e.target.value = '';
     }
   };
@@ -239,11 +273,20 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
               ))}
               <button
                 type="button"
+                disabled={isProcessingImages}
                 onClick={() => fileInputRef.current?.click()}
-                className="aspect-square rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:border-indigo-300 hover:text-indigo-400 hover:bg-indigo-50 transition-all group"
+                className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-all group ${
+                  isProcessingImages 
+                  ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed' 
+                  : 'border-gray-200 text-gray-400 hover:border-indigo-300 hover:text-indigo-400 hover:bg-indigo-50'
+                }`}
               >
-                <svg className="w-8 h-8 mb-1 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                <span className="text-[10px] font-black uppercase">Add Photo</span>
+                {isProcessingImages ? (
+                   <div className="animate-spin rounded-full h-6 w-6 border-2 border-indigo-500 border-t-transparent mb-1"></div>
+                ) : (
+                  <svg className="w-8 h-8 mb-1 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                )}
+                <span className="text-[10px] font-black uppercase">{isProcessingImages ? 'Scaling...' : 'Add Photo'}</span>
               </button>
             </div>
             <input
@@ -269,7 +312,12 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
           <div className="flex flex-col sm:flex-row gap-3 pt-6">
             <button
               type="submit"
-              className="flex-[2] bg-indigo-600 text-white font-black py-4 px-6 rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95 text-lg"
+              disabled={isProcessingImages}
+              className={`flex-[2] font-black py-4 px-6 rounded-2xl transition-all shadow-lg text-lg active:scale-95 ${
+                isProcessingImages 
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none' 
+                : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200'
+              }`}
             >
               {editId ? 'Save Changes' : 'Confirm Entry'}
             </button>

@@ -58,11 +58,17 @@ const App: React.FC = () => {
     <div className="flex flex-col min-h-screen bg-[#F8FAFC]">
       <header className="bg-white border-b border-gray-100 px-6 py-4 sticky top-0 z-30 backdrop-blur-md bg-white/80">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200">
-               <span className="text-white font-black text-xs">OT</span>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 shadow-lg shadow-indigo-100 rounded-xl overflow-hidden bg-indigo-600 flex items-center justify-center">
+               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" className="w-full h-full p-1.5">
+                  <path d="M30 40 L50 30 L70 40 L50 50 Z" fill="#fff" />
+                  <path d="M30 40 V60 L50 70 V50 Z" fill="#e0e7ff" />
+                  <path d="M70 40 V60 L50 70 V50 Z" fill="#c7d2fe" />
+                  <circle cx="72" cy="72" r="18" fill="#fff" />
+                  <path d="M64 72 L70 78 L80 68" fill="none" stroke="#4f46e5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+               </svg>
             </div>
-            <h1 className="text-xl font-black text-gray-900 tracking-tight">OrderTracker</h1>
+            <h1 className="text-xl font-black text-gray-900 tracking-tight">OrderTracker<span className="text-indigo-600">Pro</span></h1>
           </div>
           <div className="hidden md:flex gap-1">
              {navItems.map(item => (

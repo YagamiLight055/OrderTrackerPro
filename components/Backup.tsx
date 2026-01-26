@@ -5,15 +5,24 @@ import { exportToCSV, parseCSV } from '../services/csvService';
 
 const Backup: React.FC = () => {
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const handleExport = async () => {
-    const orders = await db.orders.toArray();
-    if (orders.length === 0) {
-      alert("Database is currently empty.");
-      return;
+    setExporting(true);
+    try {
+      const orders = await db.orders.toArray();
+      if (orders.length === 0) {
+        alert("Database is currently empty.");
+        return;
+      }
+      // Process takes a moment if many images exist
+      exportToCSV(orders, `order_tracker_backup_${new Date().toISOString().split('T')[0]}.csv`);
+    } catch (err) {
+      console.error(err);
+      alert("Export failed.");
+    } finally {
+      setExporting(false);
     }
-    // Note: CSVs with base64 images will be large.
-    exportToCSV(orders, `order_tracker_backup_${new Date().toISOString().split('T')[0]}.csv`);
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -30,10 +39,11 @@ const Backup: React.FC = () => {
           try {
             // Check if attachments is stringified array or single string
             if (typeof item.attachments === 'string') {
-               if (item.attachments.startsWith('[')) {
-                 attachments = JSON.parse(item.attachments);
-               } else if (item.attachments.startsWith('data:image')) {
-                 attachments = [item.attachments];
+               const trimmed = item.attachments.trim();
+               if (trimmed.startsWith('[')) {
+                 attachments = JSON.parse(trimmed);
+               } else if (trimmed.startsWith('data:image')) {
+                 attachments = [trimmed];
                }
             } else if (Array.isArray(item.attachments)) {
               attachments = item.attachments;
@@ -85,17 +95,24 @@ const Backup: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <button 
           onClick={handleExport}
-          className="group relative bg-white p-8 rounded-[2rem] shadow-xl shadow-indigo-100/30 border border-gray-100 hover:scale-[1.02] transition-all flex flex-col items-center text-center overflow-hidden"
+          disabled={exporting}
+          className="group relative bg-white p-8 rounded-[2rem] shadow-xl shadow-indigo-100/30 border border-gray-100 hover:scale-[1.02] transition-all flex flex-col items-center text-center overflow-hidden disabled:opacity-50"
         >
           <div className="absolute inset-0 bg-indigo-600 translate-y-full group-hover:translate-y-0 transition-transform duration-500 opacity-[0.03]"></div>
-          <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-3xl flex items-center justify-center mb-6 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300 shadow-inner">
-             <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+          <div className={`w-20 h-20 ${exporting ? 'bg-indigo-600' : 'bg-indigo-100'} text-indigo-600 ${exporting ? 'text-white' : ''} rounded-3xl flex items-center justify-center mb-6 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300 shadow-inner`}>
+             <svg className={`w-10 h-10 ${exporting ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+               {exporting ? (
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+               ) : (
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+               )}
+             </svg>
           </div>
-          <h3 className="font-black text-xl text-gray-900 mb-2">Export Data</h3>
-          <p className="text-sm text-gray-500 leading-relaxed font-medium">Generate a secure CSV backup including all order details and image data.</p>
+          <h3 className="font-black text-xl text-gray-900 mb-2">{exporting ? 'Generating...' : 'Export Data'}</h3>
+          <p className="text-sm text-gray-500 leading-relaxed font-medium">Generate a secure CSV backup including all order details and optimized image data.</p>
         </button>
 
-        <label className="group relative bg-white p-8 rounded-[2rem] shadow-xl shadow-green-100/30 border border-gray-100 hover:scale-[1.02] transition-all flex flex-col items-center text-center cursor-pointer overflow-hidden">
+        <label className={`group relative bg-white p-8 rounded-[2rem] shadow-xl shadow-green-100/30 border border-gray-100 hover:scale-[1.02] transition-all flex flex-col items-center text-center cursor-pointer overflow-hidden ${importing ? 'opacity-50 cursor-not-allowed' : ''}`}>
           <input type="file" accept=".csv" onChange={handleImport} className="hidden" disabled={importing} />
           <div className="absolute inset-0 bg-green-600 translate-y-full group-hover:translate-y-0 transition-transform duration-500 opacity-[0.03]"></div>
           <div className={`w-20 h-20 ${importing ? 'bg-green-600' : 'bg-green-100'} text-green-600 ${importing ? 'text-white' : ''} rounded-3xl flex items-center justify-center mb-6 group-hover:bg-green-600 group-hover:text-white transition-all duration-300 shadow-inner`}>
@@ -123,7 +140,7 @@ const Backup: React.FC = () => {
 
       <div className="bg-indigo-900 text-white p-6 rounded-3xl shadow-xl flex items-center gap-4">
         <div className="text-3xl">💡</div>
-        <p className="text-sm font-bold opacity-90 italic">Pro Tip: Large photo backups may increase CSV file size. Keep your exports in a safe cloud storage!</p>
+        <p className="text-sm font-bold opacity-90 italic">Pro Tip: Images are optimized before storage to keep your database fast and your exports reliable!</p>
       </div>
     </div>
   );
