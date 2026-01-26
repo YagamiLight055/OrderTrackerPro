@@ -1,0 +1,7 @@
+{
+  "name": "Order Tracker Pro",
+  "description": "Offline-first order management system with IndexedDB storage, CSV backup, and image attachments for loading proof.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
