@@ -33,9 +33,10 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
 
   const allOrders = useLiveQuery(() => db.orders.orderBy('createdAt').reverse().toArray());
 
-  const cities = useMemo(() => Array.from(new Set(allOrders?.map(o => o.city.trim()) || [])).sort(), [allOrders]);
-  const customers = useMemo(() => Array.from(new Set(allOrders?.map(o => o.customer.trim()) || [])).sort(), [allOrders]);
-  const materials = useMemo(() => Array.from(new Set(allOrders?.map(o => o.material.trim()) || [])).sort(), [allOrders]);
+  // Fix: Explicitly cast to string[] to resolve 'unknown' type errors during mapping in JSX
+  const cities = useMemo(() => Array.from(new Set(allOrders?.map(o => o.city.trim()) || [])).sort() as string[], [allOrders]);
+  const customers = useMemo(() => Array.from(new Set(allOrders?.map(o => o.customer.trim()) || [])).sort() as string[], [allOrders]);
+  const materials = useMemo(() => Array.from(new Set(allOrders?.map(o => o.material.trim()) || [])).sort() as string[], [allOrders]);
 
   const filteredOrders = useMemo(() => {
     if (!allOrders) return [];

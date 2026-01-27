@@ -1,6 +1,6 @@
 
-// Fix: Use named import for Dexie to ensure 'version' and other instance methods are correctly inherited and typed in subclasses.
-import { Dexie } from 'dexie';
+// Fix: Use default import for Dexie to ensure 'version' and other instance methods are correctly inherited and typed in subclasses.
+import Dexie from 'dexie';
 import type { Table } from 'dexie';
 
 export interface Order {
