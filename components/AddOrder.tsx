@@ -62,7 +62,7 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
       db.orders.get(editId).then(order => {
         if (order) {
           setFormData({
-            uuid: order.uuid || crypto.randomUUID(), // Ensure UUID even on edit of old data
+            uuid: order.uuid || crypto.randomUUID(), 
             customer: order.customer,
             city: order.city,
             material: order.material,
@@ -135,7 +135,6 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
     e.preventDefault();
     const { uuid, customer, city, material, qty, status, note, attachments, createdAt } = formData;
     
-    // Strict UUID validation
     const validUuid = uuid?.trim() || crypto.randomUUID();
 
     if (!customer.trim() || !city.trim() || !material.trim() || qty <= 0) {
@@ -144,6 +143,9 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
     }
 
     const now = Date.now();
+    // Ensure createdAt is a valid number, even if editing old potentially corrupted data
+    const finalCreatedAt = (editId && createdAt && !isNaN(createdAt)) ? createdAt : now;
+
     const orderData: Order = {
       uuid: validUuid,
       customer: customer.trim(),
@@ -153,7 +155,7 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
       status: status,
       note: note.trim(),
       attachments,
-      createdAt: editId && createdAt ? createdAt : now,
+      createdAt: finalCreatedAt,
       updatedAt: now 
     };
 

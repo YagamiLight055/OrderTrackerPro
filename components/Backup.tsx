@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../db';
 import { exportToCSV, parseCSV } from '../services/csvService';
-import { saveSyncConfig, getSyncConfig, syncWithSupabase, clearSupabaseData } from '../services/syncService';
+import { saveSyncConfig, getSyncConfig, syncWithSupabase, clearSupabaseData, getDeletedCount, purgeLocalDeletedRecords } from '../services/syncService';
 
 const Backup: React.FC = () => {
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [clearingCloud, setClearingCloud] = useState(false);
+  const [purging, setPurging] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [deletedCount, setDeletedCount] = useState(0);
   
   const [cloudConfig, setCloudConfig] = useState({
     url: '',
@@ -19,7 +21,13 @@ const Backup: React.FC = () => {
     const config = getSyncConfig();
     if (config) setCloudConfig(config);
     setLastSync(localStorage.getItem('order_tracker_last_sync_time'));
+    refreshStats();
   }, []);
+
+  const refreshStats = async () => {
+    const count = await getDeletedCount();
+    setDeletedCount(count);
+  };
 
   const handleSaveConfig = () => {
     if (!cloudConfig.url || !cloudConfig.publishableKey) {
@@ -39,12 +47,29 @@ const Backup: React.FC = () => {
     try {
       const result = await syncWithSupabase();
       setLastSync(localStorage.getItem('order_tracker_last_sync_time'));
+      await refreshStats();
       alert(`Sync Successful!\n\n- Pushed ${result.pushed} local changes\n- Pulled ${result.pulled} cloud updates`);
     } catch (err: any) {
       console.error(err);
       alert(`Sync Failed: ${err.message}`);
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handlePurge = async () => {
+    if (deletedCount === 0) return;
+    if (!confirm(`Purge ${deletedCount} deleted records from local storage? This action cannot be undone. Make sure you have synced first!`)) return;
+    
+    setPurging(true);
+    try {
+      const purged = await purgeLocalDeletedRecords();
+      alert(`Maintenance complete. Permanently removed ${purged} records.`);
+      await refreshStats();
+    } catch (err) {
+      alert("Purge failed.");
+    } finally {
+      setPurging(false);
     }
   };
 
@@ -90,7 +115,7 @@ const Backup: React.FC = () => {
 
       let count = 0;
       for (const item of data) {
-        if (!item.uuid) item.uuid = crypto.randomUUID(); // Fallback for old exports
+        if (!item.uuid) item.uuid = crypto.randomUUID();
 
         if (typeof item.attachments === 'string') {
           try {
@@ -108,6 +133,7 @@ const Backup: React.FC = () => {
         }
         count++;
       }
+      await refreshStats();
       alert(`Import complete! Processed ${count} records.`);
     } catch (err: any) {
       console.error(err);
@@ -193,6 +219,26 @@ const Backup: React.FC = () => {
             </p>
           </div>
         </div>
+      </section>
+
+      {/* Maintenance Section */}
+      <section className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm flex flex-col md:flex-row items-center gap-6">
+        <div className="w-16 h-16 bg-gray-50 text-gray-400 rounded-2xl flex items-center justify-center flex-shrink-0">
+          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+        </div>
+        <div className="flex-1 text-center md:text-left">
+           <h4 className="font-black text-gray-900 text-lg">Local Data Cleanup</h4>
+           <p className="text-sm text-gray-500 font-medium">
+             You have <span className="text-indigo-600 font-black">{deletedCount}</span> synced deletions in memory.
+           </p>
+        </div>
+        <button 
+          onClick={handlePurge}
+          disabled={purging || deletedCount === 0}
+          className="px-6 py-3 bg-gray-900 text-white rounded-xl font-black text-sm hover:bg-black transition-all active:scale-95 disabled:opacity-30 disabled:grayscale"
+        >
+          {purging ? 'Purging...' : 'Purge Tombstones'}
+        </button>
       </section>
 
       {/* CSV Section */}

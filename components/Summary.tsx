@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { db } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -14,7 +13,7 @@ const Summary: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  const orders = useLiveQuery(() => db.orders.toArray());
+  const orders = useLiveQuery(() => db.orders.filter(o => !o.deleted).toArray());
 
   const filteredOrders = useMemo(() => {
     if (!orders) return [];

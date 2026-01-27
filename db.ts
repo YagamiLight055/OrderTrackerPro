@@ -1,7 +1,6 @@
 
-// Fix: Use default import for Dexie to ensure the class and its instance methods like version() are correctly inherited and typed in subclasses.
-import Dexie from 'dexie';
-import type { Table } from 'dexie';
+// Fix: Use named import for Dexie to ensure that class methods like version() are correctly inherited and typed in subclasses.
+import { Dexie, type Table } from 'dexie';
 
 export interface Order {
   id?: number;
@@ -15,6 +14,7 @@ export interface Order {
   updatedAt: number; // Timestamp for sync resolution
   note?: string;
   attachments?: string[]; // Array of base64 strings
+  deleted?: boolean; // Flag for soft deletion to support cloud sync
 }
 
 export interface MasterItem {
@@ -32,9 +32,10 @@ export class OrderTrackerDB extends Dexie {
     super('OrderTrackerDB');
     
     // Define the database version and schema.
-    // version 5 includes sync-related fields
-    this.version(5).stores({
-      orders: '++id, &uuid, customer, city, material, qty, status, createdAt, updatedAt',
+    // version 6 includes 'deleted' field for sync tracking
+    // Fix: Using this.version() which is a standard Dexie instance method.
+    this.version(6).stores({
+      orders: '++id, &uuid, customer, city, material, qty, status, createdAt, updatedAt, deleted',
       customersMaster: '++id, &name',
       citiesMaster: '++id, &name',
       materialsMaster: '++id, &name'

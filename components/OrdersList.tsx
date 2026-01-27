@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { db, Order } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -31,9 +30,14 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
   
   const [galleryState, setGalleryState] = useState<{ images: string[], index: number } | null>(null);
 
-  const allOrders = useLiveQuery(() => db.orders.orderBy('createdAt').reverse().toArray());
+  // Filter out deleted items from the query itself for better performance and correctness
+  const allOrders = useLiveQuery(() => 
+    db.orders
+      .filter(o => !o.deleted)
+      .reverse()
+      .sortBy('createdAt')
+  );
 
-  // Fix: Explicitly cast to string[] to resolve 'unknown' type errors during mapping in JSX
   const cities = useMemo(() => Array.from(new Set(allOrders?.map(o => o.city.trim()) || [])).sort() as string[], [allOrders]);
   const customers = useMemo(() => Array.from(new Set(allOrders?.map(o => o.customer.trim()) || [])).sort() as string[], [allOrders]);
   const materials = useMemo(() => Array.from(new Set(allOrders?.map(o => o.material.trim()) || [])).sort() as string[], [allOrders]);
@@ -77,8 +81,12 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm("Delete this record permanently?")) {
-      await db.orders.delete(id);
+    if (confirm("Delete this record? It will be removed from all synced devices.")) {
+      // Use Soft Delete: mark as deleted and update timestamp so sync picks it up
+      await db.orders.update(id, { 
+        deleted: true, 
+        updatedAt: Date.now() 
+      });
     }
   };
 

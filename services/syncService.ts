@@ -30,28 +30,50 @@ export const initSupabase = () => {
 };
 
 /**
+ * Physically removes soft-deleted records from the local IndexedDB.
+ */
+export const purgeLocalDeletedRecords = async () => {
+  // Ensure we are querying correctly. Boolean true is a valid key in modern IDB.
+  const deletedRecords = await db.orders.where('deleted').equals(true).toArray();
+  if (deletedRecords.length === 0) return 0;
+  
+  const ids = deletedRecords.map(r => r.id).filter((id): id is number => id !== undefined);
+  await db.orders.bulkDelete(ids);
+  return ids.length;
+};
+
+/**
+ * Returns count of records currently marked as deleted locally.
+ */
+export const getDeletedCount = async () => {
+  try {
+    return await db.orders.where('deleted').equals(true).count();
+  } catch (e) {
+    console.warn("Deleted index query failed, falling back to filter", e);
+    // Fallback if index is not ready or corrupted
+    const all = await db.orders.toArray();
+    return all.filter(o => o.deleted === true).length;
+  }
+};
+
+/**
  * Wipes all data from the remote Supabase 'orders' table.
  */
 export const clearSupabaseData = async () => {
   const client = initSupabase();
-  if (!client) throw new Error("Cloud configuration missing. Go to the Cloud tab to configure.");
+  if (!client) throw new Error("Cloud configuration missing.");
 
-  // Deleting rows where uuid is not null (effectively all rows)
   const { error } = await client
     .from('orders')
     .delete()
     .neq('uuid', '00000000-0000-0000-0000-000000000000'); 
 
   if (error) throw error;
-  
-  // Reset local sync cursor
   localStorage.removeItem(LAST_SYNC_KEY);
 };
 
-/**
- * Repairs missing UUIDs for local data to ensure sync stability.
- */
 const repairLocalData = async () => {
+  // Fix legacy or corrupted records that are missing UUIDs or have string 'null'
   const legacyOrders = await db.orders.filter(o => !o.uuid || o.uuid === 'null' || o.uuid === '').toArray();
   if (legacyOrders.length > 0) {
     for (const order of legacyOrders) {
@@ -71,12 +93,25 @@ export const syncWithSupabase = async () => {
 
   await repairLocalData();
 
-  const lastSync = Number(localStorage.getItem(LAST_SYNC_KEY) || 0);
+  // FIX: Ensure lastSync is a valid number. 
+  // If localStorage contains "undefined" or "NaN", Number() will return NaN,
+  // which crashes the .above() IndexedDB query.
+  const storedLastSync = localStorage.getItem(LAST_SYNC_KEY);
+  let lastSync = 0;
+  if (storedLastSync) {
+    const parsed = Number(storedLastSync);
+    if (!isNaN(parsed)) {
+      lastSync = parsed;
+    }
+  }
+  
   const now = Date.now();
 
   // 1. PUSH: Local Changes -> Cloud
+  // Dexie .above(val) will throw if val is NaN
   const localChanges = await db.orders
-    .filter(order => (order.updatedAt || 0) > lastSync)
+    .where('updatedAt')
+    .above(lastSync)
     .toArray();
 
   const validLocalChanges = localChanges.filter(o => !!o.uuid && o.uuid !== 'null');
@@ -91,6 +126,7 @@ export const syncWithSupabase = async () => {
       status: o.status,
       note: o.note,
       attachments: o.attachments,
+      deleted: !!o.deleted,
       created_at: new Date(o.createdAt || now).toISOString(),
       updated_at: new Date(o.updatedAt || now).toISOString()
     }));
@@ -103,10 +139,13 @@ export const syncWithSupabase = async () => {
   }
 
   // 2. PULL: Cloud Changes -> Local
-  const { data: remoteChanges, error: pullError } = await client
-    .from('orders')
-    .select('*')
-    .gt('updated_at', new Date(lastSync).toISOString());
+  let query = client.from('orders').select('*');
+  
+  if (lastSync > 0) {
+    query = query.gt('updated_at', new Date(lastSync).toISOString());
+  }
+
+  const { data: remoteChanges, error: pullError } = await query;
 
   if (pullError) throw new Error(`Pull Error: ${pullError.message}`);
 
@@ -115,9 +154,11 @@ export const syncWithSupabase = async () => {
     for (const remote of remoteChanges) {
       if (!remote.uuid) continue;
 
+      // Dexie .equals(val) will throw if val is null/undefined
       const local = await db.orders.where('uuid').equals(remote.uuid).first();
       const remoteUpdatedAt = remote.updated_at ? new Date(remote.updated_at).getTime() : 0;
       
+      // Update local if it doesn't exist or remote is newer
       if (!local || remoteUpdatedAt > (local.updatedAt || 0)) {
         const orderData: Order = {
           ...(local || {}),
@@ -129,6 +170,7 @@ export const syncWithSupabase = async () => {
           status: remote.status,
           note: remote.note,
           attachments: remote.attachments,
+          deleted: !!remote.deleted,
           createdAt: remote.created_at ? new Date(remote.created_at).getTime() : (local?.createdAt || now),
           updatedAt: remoteUpdatedAt || now
         };
@@ -143,6 +185,10 @@ export const syncWithSupabase = async () => {
     }
   }
 
-  localStorage.setItem(LAST_SYNC_KEY, now.toString());
+  // Final check: don't save NaN to localStorage
+  if (!isNaN(now)) {
+    localStorage.setItem(LAST_SYNC_KEY, now.toString());
+  }
+  
   return { pushed: validLocalChanges.length, pulled: pullCount };
 };
