@@ -30,13 +30,30 @@ export const initSupabase = () => {
 };
 
 /**
- * Ensures all local orders have a UUID. 
- * Fixes legacy data that might have been created before UUID was mandatory.
+ * Wipes all data from the remote Supabase 'orders' table.
+ */
+export const clearSupabaseData = async () => {
+  const client = initSupabase();
+  if (!client) throw new Error("Cloud configuration missing. Go to the Cloud tab to configure.");
+
+  // Deleting rows where uuid is not null (effectively all rows)
+  const { error } = await client
+    .from('orders')
+    .delete()
+    .neq('uuid', '00000000-0000-0000-0000-000000000000'); 
+
+  if (error) throw error;
+  
+  // Reset local sync cursor
+  localStorage.removeItem(LAST_SYNC_KEY);
+};
+
+/**
+ * Repairs missing UUIDs for local data to ensure sync stability.
  */
 const repairLocalData = async () => {
-  const legacyOrders = await db.orders.filter(o => !o.uuid).toArray();
+  const legacyOrders = await db.orders.filter(o => !o.uuid || o.uuid === 'null' || o.uuid === '').toArray();
   if (legacyOrders.length > 0) {
-    console.warn(`Repairing ${legacyOrders.length} orders missing UUIDs...`);
     for (const order of legacyOrders) {
       if (order.id) {
         await db.orders.update(order.id, { 
@@ -50,21 +67,19 @@ const repairLocalData = async () => {
 
 export const syncWithSupabase = async () => {
   const client = initSupabase();
-  if (!client) throw new Error("Cloud configuration missing");
+  if (!client) throw new Error("Cloud configuration missing.");
 
-  // 0. REPAIR: Fix missing UUIDs locally before pushing
   await repairLocalData();
 
   const lastSync = Number(localStorage.getItem(LAST_SYNC_KEY) || 0);
   const now = Date.now();
 
-  // 1. PUSH: Local Changes -> Supabase
+  // 1. PUSH: Local Changes -> Cloud
   const localChanges = await db.orders
     .filter(order => (order.updatedAt || 0) > lastSync)
     .toArray();
 
-  // Robustness check: Ensure we only push items with valid UUIDs
-  const validLocalChanges = localChanges.filter(o => !!o.uuid);
+  const validLocalChanges = localChanges.filter(o => !!o.uuid && o.uuid !== 'null');
 
   if (validLocalChanges.length > 0) {
     const pushData = validLocalChanges.map(o => ({
@@ -84,20 +99,21 @@ export const syncWithSupabase = async () => {
       .from('orders')
       .upsert(pushData, { onConflict: 'uuid' });
 
-    if (pushError) throw pushError;
+    if (pushError) throw new Error(`Push Error: ${pushError.message}`);
   }
 
-  // 2. PULL: Supabase Changes -> Local
+  // 2. PULL: Cloud Changes -> Local
   const { data: remoteChanges, error: pullError } = await client
     .from('orders')
     .select('*')
     .gt('updated_at', new Date(lastSync).toISOString());
 
-  if (pullError) throw pullError;
+  if (pullError) throw new Error(`Pull Error: ${pullError.message}`);
 
+  let pullCount = 0;
   if (remoteChanges && remoteChanges.length > 0) {
     for (const remote of remoteChanges) {
-      if (!remote.uuid) continue; // Skip malformed remote data
+      if (!remote.uuid) continue;
 
       const local = await db.orders.where('uuid').equals(remote.uuid).first();
       const remoteUpdatedAt = remote.updated_at ? new Date(remote.updated_at).getTime() : 0;
@@ -122,10 +138,11 @@ export const syncWithSupabase = async () => {
         } else {
           await db.orders.put(orderData);
         }
+        pullCount++;
       }
     }
   }
 
   localStorage.setItem(LAST_SYNC_KEY, now.toString());
-  return { pushed: validLocalChanges.length, pulled: remoteChanges?.length || 0 };
+  return { pushed: validLocalChanges.length, pulled: pullCount };
 };
