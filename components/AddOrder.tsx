@@ -332,7 +332,7 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
               disabled={isSaving}
               className={`flex-[2] text-white font-black py-5 rounded-2xl shadow-2xl transition-all active:scale-95 disabled:opacity-50 uppercase tracking-widest text-sm ${mode === StorageMode.ONLINE ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'}`}
             >
-              {isSaving ? 'Processing...' : (editId ? 'Commit Changes' : 'Add Order')}
+              {isSaving ? 'Processing...' : (editId ? 'Commit Changes' : 'Save Order')}
             </button>
             <button type="button" onClick={onCancel} className="flex-1 bg-gray-100 text-gray-500 font-black py-5 rounded-2xl hover:bg-gray-200 transition-colors uppercase tracking-widest text-xs">Cancel</button>
           </div>

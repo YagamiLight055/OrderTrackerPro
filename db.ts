@@ -1,5 +1,6 @@
 
-import { Dexie, type Table } from 'dexie';
+import { Dexie } from 'dexie';
+import type { Table } from 'dexie';
 
 export interface Order {
   id?: number;
@@ -20,6 +21,7 @@ export interface MasterItem {
   name: string;
 }
 
+// Fix: Use named import { Dexie } to ensure that instance methods like 'version' are correctly inherited and recognized by the TypeScript compiler on the subclass.
 export class OrderTrackerDB extends Dexie {
   orders!: Table<Order>;
   customersMaster!: Table<MasterItem>;

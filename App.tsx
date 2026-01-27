@@ -82,10 +82,10 @@ const App: React.FC = () => {
 
   return (
     <div className={`flex flex-col min-h-screen transition-colors duration-500 ${storageMode === StorageMode.ONLINE ? 'bg-[#F0F7FF]' : 'bg-[#F8FAFC]'}`}>
-      <header className="bg-white/95 border-b border-gray-100 px-6 py-4 sticky top-0 z-50 backdrop-blur-xl">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`w-11 h-11 shadow-2xl rounded-2xl flex items-center justify-center transition-all duration-500 transform hover:scale-105 ${storageMode === StorageMode.ONLINE ? 'bg-blue-600 shadow-blue-200' : 'bg-indigo-600 shadow-indigo-200'}`}>
+      <header className="bg-white/95 border-b border-gray-100 px-4 md:px-6 py-3.5 sticky top-0 z-50 backdrop-blur-xl">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className={`w-10 h-10 md:w-11 md:h-11 shadow-2xl rounded-2xl flex items-center justify-center transition-all duration-500 transform hover:scale-105 ${storageMode === StorageMode.ONLINE ? 'bg-blue-600 shadow-blue-200' : 'bg-indigo-600 shadow-indigo-200'}`}>
                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" className="w-full h-full p-2">
                   <path d="M30 40 L50 30 L70 40 L50 50 Z" fill="#fff" />
                   <path d="M30 40 V60 L50 70 V50 Z" fill="#e0e7ff" />
@@ -94,34 +94,34 @@ const App: React.FC = () => {
                   <path d="M64 72 L70 78 L80 68" fill="none" stroke={storageMode === StorageMode.ONLINE ? '#2563eb' : '#4f46e5'} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
                </svg>
             </div>
-            <div>
-              <h1 className="text-xl font-black text-gray-900 tracking-tight leading-none">ORDER TRACKER <span className={storageMode === StorageMode.ONLINE ? 'text-blue-600' : 'text-indigo-600'}>PRO</span></h1>
-              <p className="text-[9px] font-black uppercase tracking-[0.3em] text-gray-400 mt-1">Advanced Order Tracking System</p>
+            <div className="flex flex-col justify-center">
+              <h1 className="text-lg md:text-xl font-black text-gray-900 tracking-tight leading-[1.1] uppercase">ORDER TRACKER <span className={storageMode === StorageMode.ONLINE ? 'text-blue-600' : 'text-indigo-600'}>PRO</span></h1>
+              <p className="text-[8px] md:text-[9px] font-black uppercase tracking-[0.25em] text-gray-400 mt-0.5">Advanced Order Tracking System</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
-            <div className="flex items-center bg-gray-100 p-1.5 rounded-[1.25rem] border border-gray-200 shadow-inner">
+          <div className="flex items-center gap-3 md:gap-6 flex-shrink-0">
+            <div className="flex items-center bg-gray-100 p-1 rounded-[1.25rem] border border-gray-200 shadow-inner">
                <button 
                  onClick={() => setStorageMode(StorageMode.OFFLINE)}
-                 className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] transition-all duration-300 ${storageMode === StorageMode.OFFLINE ? 'bg-white text-indigo-600 shadow-lg' : 'text-gray-400 hover:text-gray-600'}`}
+                 className={`px-3 md:px-5 py-1.5 md:py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-300 ${storageMode === StorageMode.OFFLINE ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-500'}`}
                >
                  Offline
                </button>
                <button 
                  onClick={toggleMode}
-                 className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] transition-all duration-300 ${storageMode === StorageMode.ONLINE ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'}`}
+                 className={`px-3 md:px-5 py-1.5 md:py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-300 ${storageMode === StorageMode.ONLINE ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-500'}`}
                >
                  Online
                </button>
             </div>
 
-            <div className="hidden md:flex gap-1">
+            <div className="hidden lg:flex gap-1">
                {navItems.map(item => (
                   <button 
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
-                    className={`px-5 py-2.5 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === item.id ? (storageMode === StorageMode.ONLINE ? 'bg-blue-600 text-white shadow-xl shadow-blue-100' : 'bg-indigo-600 text-white shadow-xl shadow-indigo-100') : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === item.id ? (storageMode === StorageMode.ONLINE ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-100') : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`}
                   >
                     {item.label}
                   </button>
@@ -132,16 +132,16 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-1 pb-24 p-4 md:p-8 max-w-6xl mx-auto w-full animate-in fade-in zoom-in-95 duration-500">
-        <div className="mb-8 flex items-center justify-center">
-           <div className={`px-6 py-2.5 rounded-full border text-[10px] font-black uppercase tracking-[0.25em] flex items-center gap-3 shadow-md transition-all ${storageMode === StorageMode.ONLINE ? 'bg-blue-50 border-blue-100 text-blue-700' : 'bg-indigo-50 border-indigo-100 text-indigo-700'}`}>
-              <div className={`w-2 h-2 rounded-full ${storageMode === StorageMode.ONLINE ? 'bg-blue-600 animate-ping' : 'bg-emerald-500'}`}></div>
+        <div className="mb-6 md:mb-8 flex items-center justify-center">
+           <div className={`px-5 py-2 rounded-full border text-[9px] md:text-[10px] font-black uppercase tracking-[0.25em] flex items-center gap-3 shadow-md transition-all ${storageMode === StorageMode.ONLINE ? 'bg-blue-50 border-blue-100 text-blue-700' : 'bg-indigo-50 border-indigo-100 text-indigo-700'}`}>
+              <div className={`w-2 h-2 rounded-full ${storageMode === StorageMode.ONLINE ? 'bg-blue-600 animate-pulse' : 'bg-emerald-500'}`}></div>
               Mode: {storageMode === StorageMode.ONLINE ? 'Online' : 'Offline'}
            </div>
         </div>
         {renderContent()}
       </main>
 
-      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-md bg-white/80 backdrop-blur-2xl border border-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-[2.5rem] flex justify-around p-2.5 z-50 md:hidden">
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-md bg-white/80 backdrop-blur-2xl border border-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-[2.5rem] flex justify-around p-2 z-50 lg:hidden">
         {navItems.map((item) => (
           <button
             key={item.id}
@@ -149,14 +149,14 @@ const App: React.FC = () => {
               setActiveTab(item.id);
               if (item.id !== AppTab.ADD_ORDER) setEditingOrderId(null);
             }}
-            className={`flex flex-col items-center justify-center px-4 py-2.5 rounded-3xl transition-all duration-300 ${
+            className={`flex flex-col items-center justify-center px-3 md:px-4 py-2.5 rounded-3xl transition-all duration-300 ${
               activeTab === item.id 
                 ? (storageMode === StorageMode.ONLINE ? 'text-blue-600 bg-blue-50/50 scale-110 shadow-inner' : 'text-indigo-600 bg-indigo-50/50 scale-110 shadow-inner')
                 : 'text-gray-400 hover:text-gray-600'
             }`}
           >
             {item.icon}
-            <span className="text-[9px] mt-1.5 font-black uppercase tracking-widest">{item.label}</span>
+            <span className="text-[8px] mt-1.5 font-black uppercase tracking-widest">{item.label}</span>
           </button>
         ))}
       </nav>
