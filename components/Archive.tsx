@@ -58,9 +58,18 @@ const Archive: React.FC<Props> = ({ mode }) => {
       fetchOnlineData();
       const supabase = initSupabase();
       if (supabase) {
-        const channel = supabase.channel('archive_realtime_v3_fixed')
-          .on('postgres_changes', { event: '*', table: 'shipments' }, () => fetchOnlineData())
-          .on('postgres_changes', { event: '*', table: 'orders' }, () => fetchOnlineData())
+        // Fix: Use 'postgres_changes' as a literal type and include 'schema' to satisfy overloads
+        const channel = supabase.channel('archive_realtime_v3_fixed_v2')
+          .on(
+            'postgres_changes' as any, 
+            { event: '*', table: 'shipments', schema: 'public' }, 
+            () => fetchOnlineData()
+          )
+          .on(
+            'postgres_changes' as any, 
+            { event: '*', table: 'orders', schema: 'public' }, 
+            () => fetchOnlineData()
+          )
           .subscribe();
         return () => { supabase.removeChannel(channel); };
       }
@@ -71,7 +80,6 @@ const Archive: React.FC<Props> = ({ mode }) => {
   const activeOrders: Order[] = mode === StorageMode.OFFLINE ? (localOrders || []) : onlineOrders;
 
   const availableOrders = useMemo(() => {
-    // Fixed: Using explicit loops to avoid iterator/overload issues in Set constructor
     const archivedUuids = new Set<string>();
     activeShipments.forEach(s => {
       if (s.orderUuids && Array.isArray(s.orderUuids)) {
