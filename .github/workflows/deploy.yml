@@ -28,11 +28,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          # Cache is disabled because package-lock.json is not present in the root
+          # to prevent "Dependencies lock file is not found" error.
 
       - name: Install dependencies
-        # 'npm install' is used to ensure the build works even if package-lock.json 
-        # is newly created or updated during the CI process.
         run: npm install
 
       - name: Build

@@ -94,7 +94,8 @@ export const syncWithSupabase = async () => {
         };
         
         if (local && local.id) {
-          await db.orders.update(local.id, orderData);
+          // Fix: Use 'as any' to avoid Dexie UpdateSpec type conflicts with full Order objects containing arrays.
+          await db.orders.update(local.id, orderData as any);
         } else {
           await db.orders.put(orderData);
         }
