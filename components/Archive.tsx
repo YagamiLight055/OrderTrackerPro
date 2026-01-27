@@ -58,7 +58,7 @@ const Archive: React.FC<Props> = ({ mode }) => {
       fetchOnlineData();
       const supabase = initSupabase();
       if (supabase) {
-        const channel = supabase.channel('archive_realtime_v3')
+        const channel = supabase.channel('archive_realtime_v3_fixed')
           .on('postgres_changes', { event: '*', table: 'shipments' }, () => fetchOnlineData())
           .on('postgres_changes', { event: '*', table: 'orders' }, () => fetchOnlineData())
           .subscribe();
@@ -71,10 +71,13 @@ const Archive: React.FC<Props> = ({ mode }) => {
   const activeOrders: Order[] = mode === StorageMode.OFFLINE ? (localOrders || []) : onlineOrders;
 
   const availableOrders = useMemo(() => {
-    // Explicitly using reduce for maximum compatibility and type safety
-    const archivedUuids = new Set<string>(
-      activeShipments.reduce((acc: string[], s: Shipment) => [...acc, ...s.orderUuids], [] as string[])
-    );
+    // Fixed: Using explicit loops to avoid iterator/overload issues in Set constructor
+    const archivedUuids = new Set<string>();
+    activeShipments.forEach(s => {
+      if (s.orderUuids && Array.isArray(s.orderUuids)) {
+        s.orderUuids.forEach(uuid => archivedUuids.add(uuid));
+      }
+    });
     return activeOrders.filter(o => !archivedUuids.has(o.uuid));
   }, [activeOrders, activeShipments]);
 
@@ -136,7 +139,7 @@ const Archive: React.FC<Props> = ({ mode }) => {
         });
       };
 
-      const fileArray = Array.from(files);
+      const fileArray: File[] = Array.from(files);
       const optimized = await Promise.all(
         fileArray.map(async (f: File) => {
           const dataUrl = await readFileAsDataURL(f);
@@ -144,6 +147,8 @@ const Archive: React.FC<Props> = ({ mode }) => {
         })
       );
       setAttachments(prev => [...prev, ...optimized]);
+    } catch (err) {
+      console.error("Error processing archive images", err);
     } finally {
       setIsProcessingImages(false);
       if (e.target) e.target.value = '';
@@ -232,7 +237,7 @@ const Archive: React.FC<Props> = ({ mode }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                <div className="flex flex-col">
                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 ml-1">Select Orders ({selectedOrderUuids.size})</label>
-                  <div className="bg-gray-50 rounded-[2.5rem] p-4 h-[400px] overflow-auto shadow-inner space-y-2 border border-gray-100">
+                  <div className="bg-gray-50 rounded-[2.5rem] p-4 h-[400px] overflow-auto shadow-inner space-y-2 border border-gray-100 custom-scrollbar">
                      {availableOrders.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-center p-8">
                            <p className="text-gray-300 font-black text-lg italic uppercase tracking-widest">No available orders</p>
