@@ -1,4 +1,3 @@
-
 // Fix: Use named import for Dexie to ensure that class methods like version() are correctly inherited and typed in subclasses.
 import { Dexie, type Table } from 'dexie';
 
@@ -14,7 +13,7 @@ export interface Order {
   updatedAt: number; // Timestamp for sync resolution
   note?: string;
   attachments?: string[]; // Array of base64 strings
-  deleted?: boolean; // Flag for soft deletion to support cloud sync
+  deleted?: number; // Flag for soft deletion (0 = false, 1 = true) to support cloud sync and indexing
 }
 
 export interface MasterItem {

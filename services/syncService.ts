@@ -33,8 +33,8 @@ export const initSupabase = () => {
  * Physically removes soft-deleted records from the local IndexedDB.
  */
 export const purgeLocalDeletedRecords = async () => {
-  // Ensure we are querying correctly. Boolean true is a valid key in modern IDB.
-  const deletedRecords = await db.orders.where('deleted').equals(true).toArray();
+  // Use numeric 1 for indexing as booleans are not standard IndexableTypes
+  const deletedRecords = await db.orders.where('deleted').equals(1).toArray();
   if (deletedRecords.length === 0) return 0;
   
   const ids = deletedRecords.map(r => r.id).filter((id): id is number => id !== undefined);
@@ -47,12 +47,12 @@ export const purgeLocalDeletedRecords = async () => {
  */
 export const getDeletedCount = async () => {
   try {
-    return await db.orders.where('deleted').equals(true).count();
+    // Use numeric 1 for the index query
+    return await db.orders.where('deleted').equals(1).count();
   } catch (e) {
     console.warn("Deleted index query failed, falling back to filter", e);
-    // Fallback if index is not ready or corrupted
     const all = await db.orders.toArray();
-    return all.filter(o => o.deleted === true).length;
+    return all.filter(o => o.deleted === 1).length;
   }
 };
 
@@ -73,7 +73,6 @@ export const clearSupabaseData = async () => {
 };
 
 const repairLocalData = async () => {
-  // Fix legacy or corrupted records that are missing UUIDs or have string 'null'
   const legacyOrders = await db.orders.filter(o => !o.uuid || o.uuid === 'null' || o.uuid === '').toArray();
   if (legacyOrders.length > 0) {
     for (const order of legacyOrders) {
@@ -93,9 +92,6 @@ export const syncWithSupabase = async () => {
 
   await repairLocalData();
 
-  // FIX: Ensure lastSync is a valid number. 
-  // If localStorage contains "undefined" or "NaN", Number() will return NaN,
-  // which crashes the .above() IndexedDB query.
   const storedLastSync = localStorage.getItem(LAST_SYNC_KEY);
   let lastSync = 0;
   if (storedLastSync) {
@@ -108,7 +104,6 @@ export const syncWithSupabase = async () => {
   const now = Date.now();
 
   // 1. PUSH: Local Changes -> Cloud
-  // Dexie .above(val) will throw if val is NaN
   const localChanges = await db.orders
     .where('updatedAt')
     .above(lastSync)
@@ -126,7 +121,7 @@ export const syncWithSupabase = async () => {
       status: o.status,
       note: o.note,
       attachments: o.attachments,
-      deleted: !!o.deleted,
+      deleted: o.deleted === 1, // Convert number 1 to boolean for Supabase
       created_at: new Date(o.createdAt || now).toISOString(),
       updated_at: new Date(o.updatedAt || now).toISOString()
     }));
@@ -154,11 +149,9 @@ export const syncWithSupabase = async () => {
     for (const remote of remoteChanges) {
       if (!remote.uuid) continue;
 
-      // Dexie .equals(val) will throw if val is null/undefined
       const local = await db.orders.where('uuid').equals(remote.uuid).first();
       const remoteUpdatedAt = remote.updated_at ? new Date(remote.updated_at).getTime() : 0;
       
-      // Update local if it doesn't exist or remote is newer
       if (!local || remoteUpdatedAt > (local.updatedAt || 0)) {
         const orderData: Order = {
           ...(local || {}),
@@ -170,7 +163,7 @@ export const syncWithSupabase = async () => {
           status: remote.status,
           note: remote.note,
           attachments: remote.attachments,
-          deleted: !!remote.deleted,
+          deleted: remote.deleted ? 1 : 0, // Convert boolean from cloud to number 0/1 for local
           createdAt: remote.created_at ? new Date(remote.created_at).getTime() : (local?.createdAt || now),
           updatedAt: remoteUpdatedAt || now
         };
@@ -185,7 +178,6 @@ export const syncWithSupabase = async () => {
     }
   }
 
-  // Final check: don't save NaN to localStorage
   if (!isNaN(now)) {
     localStorage.setItem(LAST_SYNC_KEY, now.toString());
   }

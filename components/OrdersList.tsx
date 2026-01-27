@@ -30,10 +30,10 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
   
   const [galleryState, setGalleryState] = useState<{ images: string[], index: number } | null>(null);
 
-  // Filter out deleted items from the query itself for better performance and correctness
+  // Filter out deleted items from the query itself
   const allOrders = useLiveQuery(() => 
     db.orders
-      .filter(o => !o.deleted)
+      .filter(o => o.deleted !== 1)
       .reverse()
       .sortBy('createdAt')
   );
@@ -82,9 +82,9 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
 
   const handleDelete = async (id: number) => {
     if (confirm("Delete this record? It will be removed from all synced devices.")) {
-      // Use Soft Delete: mark as deleted and update timestamp so sync picks it up
+      // Use Soft Delete: mark as deleted (1) and update timestamp so sync picks it up
       await db.orders.update(id, { 
-        deleted: true, 
+        deleted: 1, 
         updatedAt: Date.now() 
       });
     }
@@ -135,7 +135,6 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
           )}
         </div>
 
-        {/* Filter Selection Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           <div className="flex flex-col">
              <label className="text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">Customer</label>
@@ -176,7 +175,6 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
         </div>
       </div>
 
-      {/* Orders List Rendering */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-24">
         {filteredOrders.length === 0 ? (
           <div className="col-span-full py-24 text-center bg-white rounded-[3rem] border-2 border-dashed border-gray-100">
@@ -214,7 +212,6 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
                 <p className="text-sm font-bold text-gray-700 bg-gray-50 border border-gray-100 px-3 py-2 rounded-xl">{order.material}</p>
               </div>
 
-              {/* Enhanced Gallery Preview */}
               {order.attachments && order.attachments.length > 0 && (
                 <div className="mb-4">
                   <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
@@ -258,7 +255,6 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
         )}
       </div>
 
-      {/* Advanced Gallery Modal */}
       {galleryState && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-300" onClick={() => setGalleryState(null)}>
            <button 
