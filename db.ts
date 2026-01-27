@@ -1,5 +1,5 @@
 
-import { Dexie } from 'dexie';
+import Dexie from 'dexie';
 import type { Table } from 'dexie';
 
 export interface Order {
@@ -21,7 +21,7 @@ export interface MasterItem {
   name: string;
 }
 
-// Fix: Use named import { Dexie } to ensure that instance methods like 'version' are correctly inherited and recognized by the TypeScript compiler on the subclass.
+// Fix: Using default import for Dexie to ensure that instance methods like 'version' are correctly inherited and recognized by the TypeScript compiler on the subclass.
 export class OrderTrackerDB extends Dexie {
   orders!: Table<Order>;
   customersMaster!: Table<MasterItem>;
@@ -32,6 +32,7 @@ export class OrderTrackerDB extends Dexie {
     super('OrderTrackerDB');
     
     // Updated schema to version 7: Removed 'deleted' index and field.
+    // The version method is inherited from the Dexie base class and is used to define the database versioning and schema stores.
     this.version(7).stores({
       orders: '++id, &uuid, customer, city, material, qty, status, createdAt, updatedAt',
       customersMaster: '++id, &name',

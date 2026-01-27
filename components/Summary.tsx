@@ -19,6 +19,7 @@ const Summary: React.FC<Props> = ({ mode }) => {
   const [filterStatus, setFilterStatus] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
 
   const [onlineOrders, setOnlineOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -119,6 +120,8 @@ const Summary: React.FC<Props> = ({ mode }) => {
   const customers = useMemo(() => Array.from(new Set(activeOrders.map(o => o.customer.trim()))).sort() as string[], [activeOrders]);
   const materials = useMemo(() => Array.from(new Set(activeOrders.map(o => o.material.trim()))).sort() as string[], [activeOrders]);
 
+  const hasActiveFilters = filterCity || filterCustomer || filterMaterial || filterStatus || startDate || endDate;
+
   if (isLoading && onlineOrders.length === 0) return <div className="p-12 text-center text-blue-600 font-black animate-pulse">Calculating Cloud Realtime Stats...</div>;
 
   return (
@@ -132,63 +135,86 @@ const Summary: React.FC<Props> = ({ mode }) => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50 transition-all hover:shadow-lg">
-          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Total Orders</p>
-          <p className={`text-3xl font-black ${mode === StorageMode.ONLINE ? 'text-blue-600' : 'text-indigo-600'}`}>{stats.totalOrders}</p>
+      {/* Compact Stat Cards */}
+      <div className="grid grid-cols-3 gap-3 md:gap-4">
+        <div className="bg-white p-3 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-gray-50 transition-all hover:shadow-lg flex flex-col justify-center">
+          <p className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-gray-400 mb-0.5 md:mb-1">Orders</p>
+          <p className={`text-xl md:text-3xl font-black leading-none ${mode === StorageMode.ONLINE ? 'text-blue-600' : 'text-indigo-600'}`}>{stats.totalOrders}</p>
         </div>
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50 transition-all hover:shadow-lg">
-          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Accumulated Qty</p>
-          <p className={`text-3xl font-black ${mode === StorageMode.ONLINE ? 'text-blue-600' : 'text-indigo-600'}`}>{stats.totalQty.toLocaleString()}</p>
+        <div className="bg-white p-3 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-gray-50 transition-all hover:shadow-lg flex flex-col justify-center">
+          <p className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-gray-400 mb-0.5 md:mb-1">Total Qty</p>
+          <p className={`text-xl md:text-3xl font-black leading-none ${mode === StorageMode.ONLINE ? 'text-blue-600' : 'text-indigo-600'}`}>{stats.totalQty >= 1000000 ? (stats.totalQty / 1000000).toFixed(1) + 'M' : stats.totalQty.toLocaleString()}</p>
         </div>
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50 transition-all hover:shadow-lg">
-          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Unique Clients</p>
-          <p className={`text-3xl font-black ${mode === StorageMode.ONLINE ? 'text-blue-600' : 'text-indigo-600'}`}>{stats.uniqueCustomers}</p>
-        </div>
-      </div>
-
-      <div className="bg-white p-6 rounded-[2rem] shadow-xl shadow-gray-200/40 border border-gray-100 space-y-4">
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-          <div className="flex flex-col">
-             <label className="text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">Customer</label>
-             <select value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)} className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
-                <option value="">All Customers</option>
-                {customers.map(c => <option key={c} value={c}>{c}</option>)}
-             </select>
-          </div>
-          <div className="flex flex-col">
-             <label className="text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">Status</label>
-             <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
-                <option value="">All Statuses</option>
-                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-             </select>
-          </div>
-          <div className="flex flex-col">
-             <label className="text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">Location</label>
-             <select value={filterCity} onChange={(e) => setFilterCity(e.target.value)} className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
-                <option value="">All Cities</option>
-                {cities.map(c => <option key={c} value={c}>{c}</option>)}
-             </select>
-          </div>
-          <div className="flex flex-col">
-             <label className="text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">Material</label>
-             <select value={filterMaterial} onChange={(e) => setFilterMaterial(e.target.value)} className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
-                <option value="">All Materials</option>
-                {materials.map(m => <option key={m} value={m}>{m}</option>)}
-             </select>
-          </div>
-          <div className="flex flex-col">
-             <label className="text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">From</label>
-             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none" />
-          </div>
-          <div className="flex flex-col">
-             <label className="text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">To</label>
-             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none" />
-          </div>
+        <div className="bg-white p-3 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-gray-50 transition-all hover:shadow-lg flex flex-col justify-center">
+          <p className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-gray-400 mb-0.5 md:mb-1">Clients</p>
+          <p className={`text-xl md:text-3xl font-black leading-none ${mode === StorageMode.ONLINE ? 'text-blue-600' : 'text-indigo-600'}`}>{stats.uniqueCustomers}</p>
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-[2rem] shadow-xl shadow-gray-200/40 border border-gray-100 overflow-hidden">
+      {/* Collapsible Filter Section */}
+      <div className="bg-white p-4 md:p-5 rounded-[2rem] shadow-sm border border-gray-100 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <button 
+            onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+            className={`px-5 py-3 rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all border ${isFilterExpanded ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-100' : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'}`}
+          >
+            <svg className={`w-4 h-4 transition-transform duration-300 ${isFilterExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M19 9l-7 7-7-7" /></svg>
+            Refine Analysis {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-red-500"></span>}
+          </button>
+          
+          {hasActiveFilters && (
+            <button 
+              onClick={() => { setFilterCity(''); setFilterCustomer(''); setFilterMaterial(''); setFilterStatus(''); setStartDate(''); setEndDate(''); }} 
+              className="px-4 py-3 bg-gray-50 text-gray-400 rounded-xl hover:text-red-600 hover:bg-red-50 transition-colors border border-gray-100 text-[10px] font-black uppercase tracking-widest"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        {isFilterExpanded && (
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 pt-4 border-t border-gray-50 animate-in slide-in-from-top-4 duration-300">
+            <div className="flex flex-col">
+               <label className="text-[9px] font-black text-gray-400 uppercase mb-1 ml-1 tracking-widest">Customer</label>
+               <select value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)} className="px-3 py-2 bg-gray-50 border border-transparent rounded-xl text-[11px] font-bold shadow-sm focus:bg-white focus:border-indigo-100 outline-none cursor-pointer">
+                  <option value="">All Clients</option>
+                  {customers.map(c => <option key={c} value={c}>{c}</option>)}
+               </select>
+            </div>
+            <div className="flex flex-col">
+               <label className="text-[9px] font-black text-gray-400 uppercase mb-1 ml-1 tracking-widest">Status</label>
+               <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-3 py-2 bg-gray-50 border border-transparent rounded-xl text-[11px] font-bold shadow-sm focus:bg-white focus:border-indigo-100 outline-none cursor-pointer">
+                  <option value="">All Statuses</option>
+                  {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+               </select>
+            </div>
+            <div className="flex flex-col">
+               <label className="text-[9px] font-black text-gray-400 uppercase mb-1 ml-1 tracking-widest">Location</label>
+               <select value={filterCity} onChange={(e) => setFilterCity(e.target.value)} className="px-3 py-2 bg-gray-50 border border-transparent rounded-xl text-[11px] font-bold shadow-sm focus:bg-white focus:border-indigo-100 outline-none cursor-pointer">
+                  <option value="">All Cities</option>
+                  {cities.map(c => <option key={c} value={c}>{c}</option>)}
+               </select>
+            </div>
+            <div className="flex flex-col">
+               <label className="text-[9px] font-black text-gray-400 uppercase mb-1 ml-1 tracking-widest">Material</label>
+               <select value={filterMaterial} onChange={(e) => setFilterMaterial(e.target.value)} className="px-3 py-2 bg-gray-50 border border-transparent rounded-xl text-[11px] font-bold shadow-sm focus:bg-white focus:border-indigo-100 outline-none cursor-pointer">
+                  <option value="">All Materials</option>
+                  {materials.map(m => <option key={m} value={m}>{m}</option>)}
+               </select>
+            </div>
+            <div className="flex flex-col">
+               <label className="text-[9px] font-black text-gray-400 uppercase mb-1 ml-1 tracking-widest">From</label>
+               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-3 py-2 bg-gray-50 border border-transparent rounded-xl text-[11px] font-bold shadow-sm focus:bg-white focus:border-indigo-100 outline-none" />
+            </div>
+            <div className="flex flex-col">
+               <label className="text-[9px] font-black text-gray-400 uppercase mb-1 ml-1 tracking-widest">To</label>
+               <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-3 py-2 bg-gray-50 border border-transparent rounded-xl text-[11px] font-bold shadow-sm focus:bg-white focus:border-indigo-100 outline-none" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white p-6 rounded-[2.5rem] shadow-xl shadow-gray-200/30 border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
