@@ -25,7 +25,7 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
     status: string;
     note: string;
     attachments: string[];
-    createdAt?: number;
+    createdAt: string; // ISO string for the date input
   }>({
     uuid: crypto.randomUUID(),
     customer: '',
@@ -34,7 +34,8 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
     qty: 0,
     status: 'Pending',
     note: '',
-    attachments: []
+    attachments: [],
+    createdAt: new Date().toISOString().split('T')[0]
   });
 
   const [isProcessingImages, setIsProcessingImages] = useState(false);
@@ -97,7 +98,7 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
               status: order.status || 'Pending',
               note: order.note || '',
               attachments: order.attachments || [],
-              createdAt: order.createdAt
+              createdAt: new Date(order.createdAt).toISOString().split('T')[0]
             });
           }
         });
@@ -115,7 +116,7 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
                  status: data.status,
                  note: data.note,
                  attachments: data.attachments || [],
-                 createdAt: new Date(data.created_at).getTime()
+                 createdAt: new Date(data.created_at).toISOString().split('T')[0]
                });
              }
            });
@@ -184,14 +185,16 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
 
     const { uuid, customer, city, material, qty, status, note, attachments, createdAt } = formData;
     
-    if (!customer.trim() || !city.trim() || !material.trim() || qty <= 0) {
+    if (!customer.trim() || !city.trim() || !material.trim() || qty <= 0 || !createdAt) {
       alert("Please fill all required fields.");
       return;
     }
 
     setIsSaving(true);
     const now = Date.now();
-    const finalCreatedAt = (editId && createdAt && !isNaN(createdAt)) ? createdAt : now;
+    
+    // Use the selected date. We set time to 12:00 PM to avoid timezone shifting issues.
+    const finalCreatedAt = new Date(`${createdAt}T12:00:00`).getTime();
 
     const orderData: Order = {
       uuid: uuid || crypto.randomUUID(),
@@ -227,7 +230,7 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
             </h2>
             <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-1">Environment: {mode === StorageMode.ONLINE ? 'Cloud Live' : 'Standalone Local'}</p>
           </div>
-          <div className={`w-3.5 h-3.5 rounded-full ${mode === StorageMode.ONLINE ? 'bg-blue-600 animate-pulse shadow-[0_0_12px_rgba(37,99,235,0.4)]' : 'bg-indigo-500 shadow-[0_0_12px_rgba(79,70,229,0.3)]'}`}></div>
+          <div className={`w-3.5 h-3.5 rounded-full ${mode === StorageMode.ONLINE ? 'bg-blue-600 animate-pulse shadow-[0_0_12px_rgba(37,99,235,0.4)]' : 'bg-indigo-50 shadow-[0_0_12px_rgba(79,70,229,0.3)]'}`}></div>
         </header>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -281,6 +284,16 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
               >
                 {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
               </select>
+            </div>
+            <div>
+              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Order Date</label>
+              <input
+                type="date"
+                value={formData.createdAt}
+                onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })}
+                className="w-full px-5 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold outline-none"
+                required
+              />
             </div>
           </div>
 
