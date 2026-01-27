@@ -1,9 +1,9 @@
-
 {
   "name": "Order Tracker Pro",
   "short_name": "OrderTracker",
   "description": "Store and track orders locally with CSV backup.",
-  "start_url": "./index.html",
+  "start_url": "index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#4f46e5",

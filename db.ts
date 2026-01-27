@@ -1,15 +1,18 @@
 
-// Fix: Use named import for Dexie to ensure the class type is correctly inherited and the 'version' method is recognized.
-import { Dexie, type Table } from 'dexie';
+// Fix: Use named import for Dexie to ensure 'version' and other instance methods are correctly inherited and typed in subclasses.
+import { Dexie } from 'dexie';
+import type { Table } from 'dexie';
 
 export interface Order {
   id?: number;
+  uuid: string; // Globally unique identifier for cloud sync
   customer: string;
   city: string;
   material: string;
   qty: number;
   status: string;
   createdAt: number;
+  updatedAt: number; // Timestamp for sync resolution
   note?: string;
   attachments?: string[]; // Array of base64 strings
 }
@@ -27,9 +30,11 @@ export class OrderTrackerDB extends Dexie {
 
   constructor() {
     super('OrderTrackerDB');
-    // Define the database version and schema using the inherited 'version' method.
-    this.version(4).stores({
-      orders: '++id, customer, city, material, qty, status, createdAt',
+    
+    // Define the database version and schema.
+    // version 5 includes sync-related fields
+    this.version(5).stores({
+      orders: '++id, &uuid, customer, city, material, qty, status, createdAt, updatedAt',
       customersMaster: '++id, &name',
       citiesMaster: '++id, &name',
       materialsMaster: '++id, &name'
