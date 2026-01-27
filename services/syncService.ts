@@ -1,3 +1,4 @@
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { db, Order } from '../db';
 
@@ -24,36 +25,14 @@ export const saveSyncConfig = (config: SyncConfig) => {
 export const initSupabase = () => {
   const config = getSyncConfig();
   if (config && !supabase) {
-    supabase = createClient(config.url, config.publishableKey);
+    try {
+      supabase = createClient(config.url, config.publishableKey);
+    } catch (e) {
+      console.error("Supabase Init Failed", e);
+      return null;
+    }
   }
   return supabase;
-};
-
-/**
- * Physically removes soft-deleted records from the local IndexedDB.
- */
-export const purgeLocalDeletedRecords = async () => {
-  // Use numeric 1 for indexing as booleans are not standard IndexableTypes
-  const deletedRecords = await db.orders.where('deleted').equals(1).toArray();
-  if (deletedRecords.length === 0) return 0;
-  
-  const ids = deletedRecords.map(r => r.id).filter((id): id is number => id !== undefined);
-  await db.orders.bulkDelete(ids);
-  return ids.length;
-};
-
-/**
- * Returns count of records currently marked as deleted locally.
- */
-export const getDeletedCount = async () => {
-  try {
-    // Use numeric 1 for the index query
-    return await db.orders.where('deleted').equals(1).count();
-  } catch (e) {
-    console.warn("Deleted index query failed, falling back to filter", e);
-    const all = await db.orders.toArray();
-    return all.filter(o => o.deleted === 1).length;
-  }
 };
 
 /**
@@ -61,7 +40,7 @@ export const getDeletedCount = async () => {
  */
 export const clearSupabaseData = async () => {
   const client = initSupabase();
-  if (!client) throw new Error("Cloud configuration missing.");
+  if (!client) throw new Error("Supabase is not configured. Go to the Cloud tab.");
 
   const { error } = await client
     .from('orders')
@@ -86,9 +65,12 @@ const repairLocalData = async () => {
   }
 };
 
+/**
+ * Sync Local Standalone Database with Remote Supabase (Manual Bridge)
+ */
 export const syncWithSupabase = async () => {
   const client = initSupabase();
-  if (!client) throw new Error("Cloud configuration missing.");
+  if (!client) throw new Error("Cloud Datastore not configured.");
 
   await repairLocalData();
 
@@ -96,9 +78,7 @@ export const syncWithSupabase = async () => {
   let lastSync = 0;
   if (storedLastSync) {
     const parsed = Number(storedLastSync);
-    if (!isNaN(parsed)) {
-      lastSync = parsed;
-    }
+    if (!isNaN(parsed)) lastSync = parsed;
   }
   
   const now = Date.now();
@@ -109,10 +89,8 @@ export const syncWithSupabase = async () => {
     .above(lastSync)
     .toArray();
 
-  const validLocalChanges = localChanges.filter(o => !!o.uuid && o.uuid !== 'null');
-
-  if (validLocalChanges.length > 0) {
-    const pushData = validLocalChanges.map(o => ({
+  if (localChanges.length > 0) {
+    const pushData = localChanges.map(o => ({
       uuid: o.uuid,
       customer: o.customer,
       city: o.city,
@@ -121,7 +99,6 @@ export const syncWithSupabase = async () => {
       status: o.status,
       note: o.note,
       attachments: o.attachments,
-      deleted: o.deleted === 1, // Convert number 1 to boolean for Supabase
       created_at: new Date(o.createdAt || now).toISOString(),
       updated_at: new Date(o.updatedAt || now).toISOString()
     }));
@@ -130,25 +107,22 @@ export const syncWithSupabase = async () => {
       .from('orders')
       .upsert(pushData, { onConflict: 'uuid' });
 
-    if (pushError) throw new Error(`Push Error: ${pushError.message}`);
+    if (pushError) throw new Error(`Push Operation Failed: ${pushError.message}`);
   }
 
   // 2. PULL: Cloud Changes -> Local
   let query = client.from('orders').select('*');
-  
   if (lastSync > 0) {
     query = query.gt('updated_at', new Date(lastSync).toISOString());
   }
 
   const { data: remoteChanges, error: pullError } = await query;
-
-  if (pullError) throw new Error(`Pull Error: ${pullError.message}`);
+  if (pullError) throw new Error(`Pull Operation Failed: ${pullError.message}`);
 
   let pullCount = 0;
   if (remoteChanges && remoteChanges.length > 0) {
     for (const remote of remoteChanges) {
       if (!remote.uuid) continue;
-
       const local = await db.orders.where('uuid').equals(remote.uuid).first();
       const remoteUpdatedAt = remote.updated_at ? new Date(remote.updated_at).getTime() : 0;
       
@@ -163,7 +137,6 @@ export const syncWithSupabase = async () => {
           status: remote.status,
           note: remote.note,
           attachments: remote.attachments,
-          deleted: remote.deleted ? 1 : 0, // Convert boolean from cloud to number 0/1 for local
           createdAt: remote.created_at ? new Date(remote.created_at).getTime() : (local?.createdAt || now),
           updatedAt: remoteUpdatedAt || now
         };
@@ -178,9 +151,6 @@ export const syncWithSupabase = async () => {
     }
   }
 
-  if (!isNaN(now)) {
-    localStorage.setItem(LAST_SYNC_KEY, now.toString());
-  }
-  
-  return { pushed: validLocalChanges.length, pulled: pullCount };
+  localStorage.setItem(LAST_SYNC_KEY, now.toString());
+  return { pushed: localChanges.length, pulled: pullCount };
 };

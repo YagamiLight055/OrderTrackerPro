@@ -1,8 +1,13 @@
-import React, { useState, useMemo } from 'react';
+
+import React, { useState, useMemo, useEffect } from 'react';
 import { db, Order } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { StorageMode } from '../types';
+import { getOrders, deleteOrder } from '../services/orderService';
+import { initSupabase } from '../services/syncService';
 
 interface Props {
+  mode: StorageMode;
   onEdit: (id: number) => void;
 }
 
@@ -19,7 +24,7 @@ const getStatusColor = (status: string) => {
   }
 };
 
-const OrdersList: React.FC<Props> = ({ onEdit }) => {
+const OrdersList: React.FC<Props> = ({ mode, onEdit }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCity, setFilterCity] = useState('');
   const [filterCustomer, setFilterCustomer] = useState('');
@@ -28,23 +33,65 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   
+  const [onlineOrders, setOnlineOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRealtimeActive, setIsRealtimeActive] = useState(false);
   const [galleryState, setGalleryState] = useState<{ images: string[], index: number } | null>(null);
 
-  // Filter out deleted items from the query itself
-  const allOrders = useLiveQuery(() => 
-    db.orders
-      .filter(o => o.deleted !== 1)
-      .reverse()
-      .sortBy('createdAt')
+  // Local data query - no longer needs 'deleted' filter as records are hard-deleted
+  const localOrders = useLiveQuery(() => 
+    db.orders.reverse().sortBy('createdAt')
   );
 
-  const cities = useMemo(() => Array.from(new Set(allOrders?.map(o => o.city.trim()) || [])).sort() as string[], [allOrders]);
-  const customers = useMemo(() => Array.from(new Set(allOrders?.map(o => o.customer.trim()) || [])).sort() as string[], [allOrders]);
-  const materials = useMemo(() => Array.from(new Set(allOrders?.map(o => o.material.trim()) || [])).sort() as string[], [allOrders]);
+  const fetchOnline = async () => {
+    if (mode !== StorageMode.ONLINE) return;
+    setIsLoading(true);
+    try {
+      const data = await getOrders(StorageMode.ONLINE);
+      setOnlineOrders(data);
+    } catch (err) {
+      console.error("Fetch Online Error:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (mode === StorageMode.ONLINE) {
+      fetchOnline();
+      
+      const supabase = initSupabase();
+      if (!supabase) return;
+
+      const channel = supabase
+        .channel('public:orders_realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', table: 'orders', schema: 'public' },
+          () => fetchOnline()
+        )
+        .subscribe((status) => {
+          setIsRealtimeActive(status === 'SUBSCRIBED');
+        });
+
+      return () => {
+        supabase.removeChannel(channel);
+        setIsRealtimeActive(false);
+      };
+    } else {
+      setOnlineOrders([]);
+      setIsRealtimeActive(false);
+    }
+  }, [mode]);
+
+  const activeOrders = mode === StorageMode.OFFLINE ? (localOrders || []) : onlineOrders;
+
+  const cities = useMemo(() => Array.from(new Set(activeOrders.map(o => o.city.trim()))).sort() as string[], [activeOrders]);
+  const customers = useMemo(() => Array.from(new Set(activeOrders.map(o => o.customer.trim()))).sort() as string[], [activeOrders]);
+  const materials = useMemo(() => Array.from(new Set(activeOrders.map(o => o.material.trim()))).sort() as string[], [activeOrders]);
 
   const filteredOrders = useMemo(() => {
-    if (!allOrders) return [];
-    return allOrders.filter(o => {
+    return activeOrders.filter(o => {
       const searchStr = searchTerm.toLowerCase().trim();
       const matchesSearch = !searchStr || 
         o.customer.toLowerCase().includes(searchStr) ||
@@ -66,73 +113,65 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
 
       return matchesSearch && matchesCity && matchesCustomer && matchesMaterial && matchesStatus && matchesStart && matchesEnd;
     });
-  }, [allOrders, searchTerm, filterCity, filterCustomer, filterMaterial, filterStatus, startDate, endDate]);
+  }, [activeOrders, searchTerm, filterCity, filterCustomer, filterMaterial, filterStatus, startDate, endDate]);
 
   const hasActiveFilters = searchTerm || filterCity || filterCustomer || filterMaterial || filterStatus || startDate || endDate;
 
-  const clearFilters = () => {
-    setSearchTerm('');
-    setFilterCity('');
-    setFilterCustomer('');
-    setFilterMaterial('');
-    setFilterStatus('');
-    setStartDate('');
-    setEndDate('');
-  };
-
-  const handleDelete = async (id: number) => {
-    if (confirm("Delete this record? It will be removed from all synced devices.")) {
-      // Use Soft Delete: mark as deleted (1) and update timestamp so sync picks it up
-      await db.orders.update(id, { 
-        deleted: 1, 
-        updatedAt: Date.now() 
-      });
+  const handleDelete = async (order: Order) => {
+    if (confirm(`Delete record for ${order.customer}?`)) {
+      try {
+        await deleteOrder(mode, order.id!, order.uuid);
+        if (mode === StorageMode.ONLINE) fetchOnline(); 
+      } catch (err: any) {
+        alert("Delete failed: " + err.message);
+      }
     }
   };
 
-  const openGallery = (images: string[], index: number) => {
-    setGalleryState({ images, index });
-  };
-
-  const nextImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!galleryState) return;
-    setGalleryState(prev => prev ? { ...prev, index: (prev.index + 1) % prev.images.length } : null);
-  };
-
-  const prevImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!galleryState) return;
-    setGalleryState(prev => prev ? { ...prev, index: (prev.index - 1 + prev.images.length) % prev.images.length } : null);
-  };
-
-  if (!allOrders) return <div className="p-12 text-center text-gray-400 font-bold">Waking up database...</div>;
-
   return (
     <div className="space-y-6">
-      {/* Search and Advanced Filters */}
+      {mode === StorageMode.ONLINE && (
+        <div className="flex justify-center -mt-2">
+           <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${isRealtimeActive ? 'bg-blue-50 border-blue-100 text-blue-600' : 'bg-red-50 border-red-100 text-red-600'}`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${isRealtimeActive ? 'bg-blue-600 animate-pulse' : 'bg-red-500'}`}></div>
+              {isRealtimeActive ? 'Live Supabase Connection' : 'Realtime Disconnected'}
+           </div>
+        </div>
+      )}
+
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 sticky top-[80px] z-20 space-y-5">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="relative flex-1">
+        <div className="flex flex-col md:flex-row gap-4 items-center">
+          <div className="relative flex-1 w-full">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             </span>
             <input
               type="text"
-              placeholder="Search history..."
+              placeholder={`Search ${mode === StorageMode.ONLINE ? 'cloud' : 'local'} history...`}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold text-gray-900"
             />
           </div>
-          {hasActiveFilters && (
-            <button 
-              onClick={clearFilters} 
-              className="px-6 py-4 bg-indigo-50 text-indigo-600 rounded-2xl font-black text-sm whitespace-nowrap hover:bg-indigo-100 transition-colors"
-            >
-              Clear All
-            </button>
-          )}
+          <div className="flex gap-2 w-full md:w-auto">
+            {mode === StorageMode.ONLINE && (
+              <button 
+                onClick={fetchOnline}
+                disabled={isLoading}
+                className="p-4 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-100 transition-colors disabled:opacity-50"
+              >
+                <svg className={`w-6 h-6 ${isLoading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+              </button>
+            )}
+            {hasActiveFilters && (
+              <button 
+                onClick={() => { setSearchTerm(''); setFilterCity(''); setFilterCustomer(''); setFilterMaterial(''); setFilterStatus(''); setStartDate(''); setEndDate(''); }} 
+                className="px-6 py-4 bg-gray-50 text-gray-400 rounded-2xl font-black text-sm whitespace-nowrap hover:bg-gray-100 transition-colors"
+              >
+                Reset
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
@@ -176,13 +215,18 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-24">
-        {filteredOrders.length === 0 ? (
+        {isLoading && onlineOrders.length === 0 ? (
+           <div className="col-span-full py-24 text-center">
+              <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-blue-600 font-black uppercase tracking-widest text-sm">Accessing Cloud Storage...</p>
+           </div>
+        ) : filteredOrders.length === 0 ? (
           <div className="col-span-full py-24 text-center bg-white rounded-[3rem] border-2 border-dashed border-gray-100">
             <p className="text-gray-300 font-black text-xl italic uppercase tracking-widest">No Matches Found</p>
           </div>
         ) : (
           filteredOrders.map(order => (
-            <div key={order.id} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-50 flex flex-col hover:shadow-xl hover:shadow-indigo-100/30 transition-all duration-300 group">
+            <div key={order.uuid} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-50 flex flex-col hover:shadow-xl hover:shadow-indigo-100/30 transition-all duration-300 group">
               <div className="flex justify-between items-start mb-4">
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -192,17 +236,11 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
                     <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ${getStatusColor(order.status)}`}>
                       {order.status}
                     </span>
-                    {order.attachments && order.attachments.length > 0 && (
-                      <span className="bg-gray-900 text-white text-[9px] font-black px-2.5 py-1 rounded-full flex items-center gap-1">
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                        {order.attachments.length} Photos
-                      </span>
-                    )}
                   </div>
                   <h3 className="text-2xl font-black text-gray-900 leading-none">{order.customer}</h3>
                 </div>
-                <div className="bg-indigo-600 rounded-2xl p-4 min-w-[70px] text-center shadow-lg shadow-indigo-100">
-                  <span className="block text-[10px] text-indigo-200 font-black uppercase tracking-tighter">Qty</span>
+                <div className={`${mode === StorageMode.ONLINE ? 'bg-blue-600' : 'bg-indigo-600'} rounded-2xl p-4 min-w-[70px] text-center shadow-lg`}>
+                  <span className="block text-[10px] opacity-70 text-white font-black uppercase tracking-tighter">Qty</span>
                   <span className="block text-2xl font-black text-white leading-none mt-1">{order.qty}</span>
                 </div>
               </div>
@@ -218,22 +256,13 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
                     {order.attachments.map((src, idx) => (
                       <button 
                         key={idx}
-                        onClick={() => openGallery(order.attachments!, idx)}
+                        onClick={() => setGalleryState({ images: order.attachments!, index: idx })}
                         className="relative w-20 h-20 rounded-2xl overflow-hidden border-2 border-white shadow-sm flex-shrink-0 group/img hover:scale-105 transition-transform"
                       >
                         <img src={src} className="w-full h-full object-cover" alt="attachment" loading="lazy" />
-                        <div className="absolute inset-0 bg-indigo-600/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                          <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                        </div>
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {order.note && (
-                <div className="bg-amber-50/50 p-3 rounded-2xl text-xs font-medium text-amber-900 mb-4 border border-amber-100 italic">
-                  "{order.note}"
                 </div>
               )}
 
@@ -245,7 +274,7 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
                   <button onClick={() => onEdit(order.id!)} className="p-3 bg-gray-50 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                   </button>
-                  <button onClick={() => handleDelete(order.id!)} className="p-3 bg-gray-50 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all">
+                  <button onClick={() => handleDelete(order)} className="p-3 bg-gray-50 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                   </button>
                 </div>
@@ -257,38 +286,9 @@ const OrdersList: React.FC<Props> = ({ onEdit }) => {
 
       {galleryState && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-300" onClick={() => setGalleryState(null)}>
-           <button 
-             onClick={() => setGalleryState(null)}
-             className="absolute top-6 right-6 p-4 text-white/50 hover:text-white transition-colors"
-           >
-             <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
-           </button>
-
-           <div className="relative w-full max-w-4xl flex items-center group" onClick={e => e.stopPropagation()}>
-              {galleryState.images.length > 1 && (
-                <>
-                  <button onClick={prevImage} className="absolute left-0 md:-left-20 p-4 text-white/30 hover:text-white transition-all bg-white/5 rounded-full backdrop-blur z-10">
-                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg>
-                  </button>
-                  <button onClick={nextImage} className="absolute right-0 md:-right-20 p-4 text-white/30 hover:text-white transition-all bg-white/5 rounded-full backdrop-blur z-10">
-                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
-                  </button>
-                </>
-              )}
-              
-              <div className="w-full flex flex-col items-center gap-6">
-                <img 
-                  src={galleryState.images[galleryState.index]} 
-                  className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl border-4 border-white/5 ring-1 ring-white/10" 
-                  alt="Proof Full Size" 
-                />
-                <div className="flex flex-col items-center gap-2">
-                   <div className="px-6 py-2 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 text-white font-black text-sm uppercase tracking-widest shadow-xl">
-                    Photo {galleryState.index + 1} of {galleryState.images.length}
-                   </div>
-                   <p className="text-white/40 text-[10px] font-bold uppercase">Click outside to dismiss</p>
-                </div>
-              </div>
+           <div className="relative w-full max-w-4xl flex flex-col items-center gap-6" onClick={e => e.stopPropagation()}>
+              <img src={galleryState.images[galleryState.index]} className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl" alt="Proof" />
+              <button onClick={() => setGalleryState(null)} className="px-8 py-3 bg-white/10 text-white rounded-full border border-white/20 font-black uppercase tracking-widest text-sm hover:bg-white/20">Close</button>
            </div>
         </div>
       )}

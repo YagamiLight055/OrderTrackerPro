@@ -7,6 +7,11 @@ export enum AppTab {
   BACKUP = 'BACKUP'
 }
 
+export enum StorageMode {
+  OFFLINE = 'OFFLINE',
+  ONLINE = 'ONLINE'
+}
+
 export interface SummaryRow {
   city: string;
   customer: string;
