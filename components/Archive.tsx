@@ -13,6 +13,7 @@ interface Props {
 
 const Archive: React.FC<Props> = ({ mode }) => {
   const [isCreating, setIsCreating] = useState(false);
+  const [openedShipmentUuid, setOpenedShipmentUuid] = useState<string | null>(null);
   const [selectedOrderUuids, setSelectedOrderUuids] = useState<Set<string>>(new Set());
   const [reference, setReference] = useState('');
   const [dispatchDate, setDispatchDate] = useState(new Date().toISOString().split('T')[0]);
@@ -58,8 +59,7 @@ const Archive: React.FC<Props> = ({ mode }) => {
       fetchOnlineData();
       const supabase = initSupabase();
       if (supabase) {
-        // Fix: Use 'postgres_changes' as a literal type and include 'schema' to satisfy overloads
-        const channel = supabase.channel('archive_realtime_v3_fixed_v2')
+        const channel = supabase.channel('archive_realtime_v4')
           .on(
             'postgres_changes' as any, 
             { event: '*', table: 'shipments', schema: 'public' }, 
@@ -103,6 +103,17 @@ const Archive: React.FC<Props> = ({ mode }) => {
       return matchesRef && matchesStart && matchesEnd;
     }).sort((a, b) => b.dispatchDate - a.dispatchDate);
   }, [activeShipments, filterRef, filterStartDate, filterEndDate]);
+
+  const openedShipment = useMemo(() => 
+    activeShipments.find(s => s.uuid === openedShipmentUuid), 
+  [activeShipments, openedShipmentUuid]);
+
+  const openedShipmentOrders = useMemo(() => {
+    if (!openedShipment) return [];
+    return openedShipment.orderUuids
+      .map(uuid => activeOrders.find(o => o.uuid === uuid))
+      .filter(Boolean) as Order[];
+  }, [openedShipment, activeOrders]);
 
   const handleToggleOrder = (uuid: string) => {
     const next = new Set(selectedOrderUuids);
@@ -194,15 +205,148 @@ const Archive: React.FC<Props> = ({ mode }) => {
     }
   };
 
-  const handleDeleteShipment = async (shipment: Shipment) => {
+  const handleDeleteShipment = async (shipment: Shipment, e: React.MouseEvent) => {
+    e.stopPropagation();
     if (confirm("Delete this archive bundle? Linked orders will return to history for re-bundling.")) {
       await deleteShipment(mode, shipment.id!, shipment.uuid);
+      if (openedShipmentUuid === shipment.uuid) setOpenedShipmentUuid(null);
       if (mode === StorageMode.ONLINE) fetchOnlineData();
     }
   };
 
   const hasActiveFilters = filterRef || filterStartDate || filterEndDate;
 
+  // --- DETAIL MANIFEST VIEW ---
+  if (openedShipment && openedShipmentUuid) {
+    const totalQty = openedShipmentOrders.reduce((sum, o) => sum + o.qty, 0);
+
+    return (
+      <div className="fixed inset-0 z-[100] bg-gray-50 flex flex-col animate-in slide-in-from-right duration-500 overflow-hidden">
+        {/* Detail Header */}
+        <header className="bg-white border-b border-gray-100 px-4 md:px-8 py-4 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setOpenedShipmentUuid(null)}
+              className="p-3 bg-gray-100 text-gray-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all active:scale-90"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">Archive Manifest</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">ID: {openedShipment.uuid.split('-')[0]}</span>
+              </div>
+              <h2 className="text-2xl font-black text-gray-900 tracking-tighter uppercase leading-none mt-1">Ref: {openedShipment.reference}</h2>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+             <button 
+               onClick={(e) => handleDeleteShipment(openedShipment, e as any)}
+               className="px-6 py-3 bg-red-50 text-red-600 font-black rounded-xl hover:bg-red-600 hover:text-white transition-all text-xs uppercase tracking-widest"
+             >
+               Delete Bundle
+             </button>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8">
+           <div className="max-w-6xl mx-auto space-y-12">
+              {/* Stats & Metadata Overview */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col justify-center">
+                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Total Load Weight</p>
+                   <p className="text-4xl font-black text-gray-900">{totalQty.toLocaleString()} <span className="text-sm font-bold text-gray-300">UNITS</span></p>
+                </div>
+                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col justify-center">
+                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Manifest Size</p>
+                   <p className="text-4xl font-black text-gray-900">{openedShipmentOrders.length} <span className="text-sm font-bold text-gray-300">ORDERS</span></p>
+                </div>
+                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col justify-center">
+                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Dispatch Date</p>
+                   <p className="text-4xl font-black text-indigo-600">{new Date(openedShipment.dispatchDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                </div>
+              </div>
+
+              {/* Loading Proof Section */}
+              {openedShipment.attachments.length > 0 && (
+                <section>
+                   <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] mb-4 ml-2">Loading Proof Gallery</h3>
+                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                      {openedShipment.attachments.map((src, i) => (
+                        <div key={i} className="aspect-square bg-white p-1 rounded-3xl shadow-sm border border-gray-100 group overflow-hidden cursor-zoom-in">
+                          <img 
+                            src={src} 
+                            className="w-full h-full object-cover rounded-[1.25rem] group-hover:scale-110 transition-transform duration-500" 
+                            alt="loading proof"
+                            onClick={() => window.open(src, '_blank')}
+                          />
+                        </div>
+                      ))}
+                   </div>
+                </section>
+              )}
+
+              {openedShipment.note && (
+                <section className="bg-white p-8 rounded-[3rem] border-2 border-dashed border-gray-200">
+                   <h3 className="text-xs font-black text-indigo-400 uppercase tracking-[0.3em] mb-4">Shipment Supervisor Notes</h3>
+                   <p className="text-lg font-medium text-gray-700 leading-relaxed italic">"{openedShipment.note}"</p>
+                </section>
+              )}
+
+              {/* Orders List Section */}
+              <section className="space-y-6">
+                <div className="flex items-center justify-between mb-8">
+                   <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter">Items in Manifest</h3>
+                   <div className="h-px flex-1 mx-8 bg-gray-100 hidden md:block"></div>
+                </div>
+
+                <div className="space-y-4">
+                   {openedShipmentOrders.map((order, idx) => (
+                      <div key={order.uuid} className="bg-white rounded-[2.5rem] p-6 md:p-8 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                        <div className="flex flex-col md:flex-row gap-6">
+                           <div className="bg-gray-50 rounded-[2rem] w-full md:w-32 h-32 flex flex-col items-center justify-center text-center p-4">
+                              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Order qty</span>
+                              <p className="text-2xl font-black text-gray-900">{order.qty}</p>
+                           </div>
+                           <div className="flex-1 space-y-4">
+                              <div className="flex flex-wrap items-center justify-between gap-4">
+                                 <div>
+                                    <h4 className="text-xl font-black text-gray-900">{order.customer}</h4>
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">{order.city} • {order.material}</p>
+                                 </div>
+                                 <div className="flex items-center gap-3">
+                                    <span className="px-3 py-1.5 bg-gray-50 text-gray-500 border border-gray-100 rounded-xl text-[10px] font-black uppercase tracking-widest">
+                                       {order.status}
+                                    </span>
+                                 </div>
+                              </div>
+                              {order.note && <p className="text-sm text-gray-500 bg-gray-50 px-4 py-3 rounded-2xl italic">Note: {order.note}</p>}
+                              
+                              {order.attachments && order.attachments.length > 0 && (
+                                <div className="flex gap-3 overflow-x-auto no-scrollbar pt-2">
+                                   {order.attachments.map((img, i) => (
+                                      <img 
+                                        key={i} 
+                                        src={img} 
+                                        className="w-16 h-16 rounded-2xl object-cover border border-gray-100 shadow-sm hover:scale-105 transition-transform" 
+                                        alt="item detail" 
+                                      />
+                                   ))}
+                                </div>
+                              )}
+                           </div>
+                        </div>
+                      </div>
+                   ))}
+                </div>
+              </section>
+           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- CREATION VIEW ---
   if (isCreating) {
     return (
       <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 pb-24 px-2">
@@ -333,6 +477,7 @@ const Archive: React.FC<Props> = ({ mode }) => {
     );
   }
 
+  // --- ARCHIVE GRID VIEW ---
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-6xl mx-auto pb-24 px-2">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -426,7 +571,11 @@ const Archive: React.FC<Props> = ({ mode }) => {
              const totalQty = linked.reduce((sum, o) => sum + o.qty, 0);
 
              return (
-               <div key={shipment.uuid} className="bg-white rounded-[3rem] p-8 shadow-sm border border-gray-50 hover:shadow-2xl hover:shadow-indigo-100/50 transition-all duration-500 flex flex-col group relative overflow-hidden">
+               <div 
+                 key={shipment.uuid} 
+                 onClick={() => setOpenedShipmentUuid(shipment.uuid)}
+                 className="bg-white rounded-[3rem] p-8 shadow-sm border border-gray-50 hover:shadow-2xl hover:shadow-indigo-100/50 transition-all duration-500 flex flex-col group relative overflow-hidden cursor-pointer active:scale-[0.98]"
+               >
                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50/30 rounded-full -mr-16 -mt-16 group-hover:bg-indigo-100/50 transition-colors"></div>
                  
                  <div className="flex justify-between items-start mb-8 relative z-10">
@@ -448,11 +597,11 @@ const Archive: React.FC<Props> = ({ mode }) => {
 
                  <div className="flex-1 mb-6 relative z-10">
                     <div className="flex flex-wrap gap-2 mb-4">
-                       {linked.slice(0, 4).map(o => (
+                       {linked.slice(0, 3).map(o => (
                           <span key={o.uuid} className="text-[9px] font-bold text-gray-600 bg-gray-50 border border-gray-100 px-2.5 py-1.5 rounded-xl truncate max-w-[120px]">{o.customer}</span>
                        ))}
-                       {linked.length > 4 && (
-                          <span className="text-[9px] font-black text-indigo-400 bg-indigo-50 px-2.5 py-1.5 rounded-xl">+{linked.length - 4} More</span>
+                       {linked.length > 3 && (
+                          <span className="text-[9px] font-black text-indigo-400 bg-indigo-50 px-2.5 py-1.5 rounded-xl">+{linked.length - 3} More</span>
                        )}
                     </div>
                     {shipment.note && (
@@ -464,19 +613,28 @@ const Archive: React.FC<Props> = ({ mode }) => {
 
                  {shipment.attachments.length > 0 && (
                     <div className="flex gap-3 overflow-x-auto no-scrollbar mb-6 relative z-10 pb-2">
-                       {shipment.attachments.map((src, i) => (
-                          <img key={i} src={src} className="w-16 h-16 rounded-[1.25rem] object-cover border-2 border-white shadow-md flex-shrink-0 hover:scale-105 transition-transform" alt="loading-proof" />
+                       {shipment.attachments.slice(0, 4).map((src, i) => (
+                          <img key={i} src={src} className="w-14 h-14 rounded-[1.25rem] object-cover border-2 border-white shadow-md flex-shrink-0" alt="loading-proof" />
                        ))}
+                       {shipment.attachments.length > 4 && (
+                          <div className="w-14 h-14 rounded-[1.25rem] bg-gray-100 flex items-center justify-center text-[10px] font-black text-gray-400 border-2 border-white shadow-md flex-shrink-0">
+                             +{shipment.attachments.length - 4}
+                          </div>
+                       )}
                     </div>
                  )}
 
-                 <div className="flex justify-end gap-3 pt-6 border-t border-gray-50 relative z-10">
+                 <div className="flex justify-between items-center pt-6 border-t border-gray-50 relative z-10">
+                    <div className="flex items-center gap-2 text-indigo-600">
+                       <span className="text-[10px] font-black uppercase tracking-widest">View Manifest</span>
+                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path d="M9 5l7 7-7 7" /></svg>
+                    </div>
                     <button 
-                      onClick={() => handleDeleteShipment(shipment)}
-                      className="p-3.5 bg-gray-50 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all shadow-sm"
+                      onClick={(e) => handleDeleteShipment(shipment, e)}
+                      className="p-3.5 bg-gray-50 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all shadow-sm"
                       title="Un-bundle Shipment"
                     >
-                       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                     </button>
                  </div>
                </div>
