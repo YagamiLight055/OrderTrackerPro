@@ -1,4 +1,5 @@
 
+// Fixed: Using default import for Dexie to ensure proper inheritance of instance methods in TypeScript.
 import Dexie from 'dexie';
 import type { Table } from 'dexie';
 
@@ -16,14 +17,27 @@ export interface Order {
   attachments?: string[]; // Array of base64 strings
 }
 
+export interface Shipment {
+  id?: number;
+  uuid: string;
+  reference: string;
+  orderUuids: string[];
+  attachments: string[];
+  createdAt: number;
+  updatedAt: number;
+  dispatchDate: number; // New: Actual date of dispatch/loading
+  note?: string;
+}
+
 export interface MasterItem {
   id?: number;
   name: string;
 }
 
-// Fix: Using default import for Dexie to ensure that instance methods like 'version' are correctly inherited and recognized by the TypeScript compiler on the subclass.
+// Fixed inheritance visibility: Using default import for Dexie to ensure that instance methods like 'version' are correctly inherited and recognized by the TypeScript compiler on the subclass.
 export class OrderTrackerDB extends Dexie {
   orders!: Table<Order>;
+  shipments!: Table<Shipment>;
   customersMaster!: Table<MasterItem>;
   citiesMaster!: Table<MasterItem>;
   materialsMaster!: Table<MasterItem>;
@@ -31,10 +45,10 @@ export class OrderTrackerDB extends Dexie {
   constructor() {
     super('OrderTrackerDB');
     
-    // Updated schema to version 7: Removed 'deleted' index and field.
-    // The version method is inherited from the Dexie base class and is used to define the database versioning and schema stores.
-    this.version(7).stores({
+    // Updated schema to version 9: Added dispatchDate to shipments.
+    this.version(9).stores({
       orders: '++id, &uuid, customer, city, material, qty, status, createdAt, updatedAt',
+      shipments: '++id, &uuid, reference, *orderUuids, createdAt, dispatchDate',
       customersMaster: '++id, &name',
       citiesMaster: '++id, &name',
       materialsMaster: '++id, &name'

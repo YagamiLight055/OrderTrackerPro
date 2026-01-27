@@ -6,6 +6,7 @@ import OrdersList from './components/OrdersList';
 import Summary from './components/Summary';
 import Backup from './components/Backup';
 import MasterData from './components/MasterData';
+import Archive from './components/Archive';
 import { getSyncConfig } from './services/syncService';
 
 const App: React.FC = () => {
@@ -59,6 +60,8 @@ const App: React.FC = () => {
         />;
       case AppTab.SUMMARY:
         return <Summary mode={storageMode} />;
+      case AppTab.ARCHIVE:
+        return <Archive mode={storageMode} />;
       case AppTab.MASTER_DATA:
         return <MasterData mode={storageMode} />;
       case AppTab.BACKUP:
@@ -73,8 +76,9 @@ const App: React.FC = () => {
   };
 
   const navItems = [
-    { id: AppTab.ADD_ORDER, label: 'Add Order', icon: <PlusIcon className="w-6 h-6" /> },
+    { id: AppTab.ADD_ORDER, label: 'Add', icon: <PlusIcon className="w-6 h-6" /> },
     { id: AppTab.ORDERS_LIST, label: 'History', icon: <ListBulletIcon className="w-6 h-6" /> },
+    { id: AppTab.ARCHIVE, label: 'Archive', icon: <ArchiveBoxIcon className="w-6 h-6" /> },
     { id: AppTab.SUMMARY, label: 'Stats', icon: <ChartBarIcon className="w-6 h-6" /> },
     { id: AppTab.MASTER_DATA, label: 'Manage', icon: <Cog6ToothIcon className="w-6 h-6" /> },
     { id: AppTab.BACKUP, label: 'Cloud', icon: <CloudArrowUpIcon className="w-6 h-6" /> },
@@ -141,7 +145,7 @@ const App: React.FC = () => {
         {renderContent()}
       </main>
 
-      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-md bg-white/80 backdrop-blur-2xl border border-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-[2.5rem] flex justify-around p-2 z-50 lg:hidden">
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-lg bg-white/80 backdrop-blur-2xl border border-white shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-[2.5rem] flex justify-around p-2 z-50 lg:hidden overflow-x-auto no-scrollbar">
         {navItems.map((item) => (
           <button
             key={item.id}
@@ -149,14 +153,14 @@ const App: React.FC = () => {
               setActiveTab(item.id);
               if (item.id !== AppTab.ADD_ORDER) setEditingOrderId(null);
             }}
-            className={`flex flex-col items-center justify-center px-3 md:px-4 py-2.5 rounded-3xl transition-all duration-300 ${
+            className={`flex flex-col items-center justify-center px-3 py-2.5 rounded-3xl transition-all duration-300 min-w-[64px] ${
               activeTab === item.id 
-                ? (storageMode === StorageMode.ONLINE ? 'text-blue-600 bg-blue-50/50 scale-110 shadow-inner' : 'text-indigo-600 bg-indigo-50/50 scale-110 shadow-inner')
+                ? (storageMode === StorageMode.ONLINE ? 'text-blue-600 bg-blue-50/50 scale-105 shadow-inner' : 'text-indigo-600 bg-indigo-50/50 scale-105 shadow-inner')
                 : 'text-gray-400 hover:text-gray-600'
             }`}
           >
             {item.icon}
-            <span className="text-[8px] mt-1.5 font-black uppercase tracking-widest">{item.label}</span>
+            <span className="text-[7px] mt-1.5 font-black uppercase tracking-widest">{item.label}</span>
           </button>
         ))}
       </nav>
@@ -174,6 +178,9 @@ function ListBulletIcon(props: React.SVGProps<SVGSVGElement>) {
 }
 function ChartBarIcon(props: React.SVGProps<SVGSVGElement>) {
   return <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
+}
+function ArchiveBoxIcon(props: React.SVGProps<SVGSVGElement>) {
+  return <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>;
 }
 function Cog6ToothIcon(props: React.SVGProps<SVGSVGElement>) {
   return <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;

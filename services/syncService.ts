@@ -1,6 +1,6 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { db, Order } from '../db';
+import { db, Order, Shipment } from '../db';
 
 let supabase: SupabaseClient | null = null;
 
@@ -35,44 +35,23 @@ export const initSupabase = () => {
   return supabase;
 };
 
-/**
- * Wipes all data from the remote Supabase 'orders' table.
- */
 export const clearSupabaseData = async () => {
   const client = initSupabase();
-  if (!client) throw new Error("Supabase is not configured. Go to the Cloud tab.");
+  if (!client) throw new Error("Supabase not configured.");
 
-  const { error } = await client
-    .from('orders')
-    .delete()
-    .neq('uuid', '00000000-0000-0000-0000-000000000000'); 
+  // Clear both tables
+  const { error: err1 } = await client.from('orders').delete().neq('uuid', '00000000-0000-0000-0000-000000000000'); 
+  const { error: err2 } = await client.from('shipments').delete().neq('uuid', '00000000-0000-0000-0000-000000000000'); 
 
-  if (error) throw error;
+  if (err1) throw err1;
+  if (err2) throw err2;
+  
   localStorage.removeItem(LAST_SYNC_KEY);
 };
 
-const repairLocalData = async () => {
-  const legacyOrders = await db.orders.filter(o => !o.uuid || o.uuid === 'null' || o.uuid === '').toArray();
-  if (legacyOrders.length > 0) {
-    for (const order of legacyOrders) {
-      if (order.id) {
-        await db.orders.update(order.id, { 
-          uuid: crypto.randomUUID(),
-          updatedAt: Date.now() 
-        });
-      }
-    }
-  }
-};
-
-/**
- * Sync Local Standalone Database with Remote Supabase (Manual Bridge)
- */
 export const syncWithSupabase = async () => {
   const client = initSupabase();
   if (!client) throw new Error("Cloud Datastore not configured.");
-
-  await repairLocalData();
 
   const storedLastSync = localStorage.getItem(LAST_SYNC_KEY);
   let lastSync = 0;
@@ -83,14 +62,10 @@ export const syncWithSupabase = async () => {
   
   const now = Date.now();
 
-  // 1. PUSH: Local Changes -> Cloud
-  const localChanges = await db.orders
-    .where('updatedAt')
-    .above(lastSync)
-    .toArray();
-
-  if (localChanges.length > 0) {
-    const pushData = localChanges.map(o => ({
+  // --- ORDERS SYNC ---
+  const localOrderChanges = await db.orders.where('updatedAt').above(lastSync).toArray();
+  if (localOrderChanges.length > 0) {
+    await client.from('orders').upsert(localOrderChanges.map(o => ({
       uuid: o.uuid,
       customer: o.customer,
       city: o.city,
@@ -99,58 +74,55 @@ export const syncWithSupabase = async () => {
       status: o.status,
       note: o.note,
       attachments: o.attachments,
-      created_at: new Date(o.createdAt || now).toISOString(),
-      updated_at: new Date(o.updatedAt || now).toISOString()
-    }));
-
-    const { error: pushError } = await client
-      .from('orders')
-      .upsert(pushData, { onConflict: 'uuid' });
-
-    if (pushError) throw new Error(`Push Operation Failed: ${pushError.message}`);
+      created_at: new Date(o.createdAt).toISOString(),
+      updated_at: new Date(o.updatedAt).toISOString()
+    })), { onConflict: 'uuid' });
   }
 
-  // 2. PULL: Cloud Changes -> Local
-  let query = client.from('orders').select('*');
-  if (lastSync > 0) {
-    query = query.gt('updated_at', new Date(lastSync).toISOString());
+  // --- SHIPMENTS SYNC ---
+  const localShipmentChanges = await db.shipments.where('updatedAt').above(lastSync).toArray();
+  if (localShipmentChanges.length > 0) {
+    await client.from('shipments').upsert(localShipmentChanges.map(s => ({
+      uuid: s.uuid,
+      reference: s.reference,
+      order_uuids: s.orderUuids,
+      attachments: s.attachments,
+      dispatch_date: new Date(s.dispatchDate).toISOString(),
+      note: s.note,
+      created_at: new Date(s.createdAt).toISOString(),
+      updated_at: new Date(s.updatedAt).toISOString()
+    })), { onConflict: 'uuid' });
   }
 
-  const { data: remoteChanges, error: pullError } = await query;
-  if (pullError) throw new Error(`Pull Operation Failed: ${pullError.message}`);
+  // --- PULL REMOTE ---
+  const { data: remoteOrders } = await client.from('orders').select('*').gt('updated_at', new Date(lastSync).toISOString());
+  if (remoteOrders) {
+    for (const r of remoteOrders) {
+      const local = await db.orders.where('uuid').equals(r.uuid).first();
+      const updated = {
+        uuid: r.uuid, customer: r.customer, city: r.city, material: r.material, qty: r.qty,
+        status: r.status, note: r.note, attachments: r.attachments,
+        createdAt: new Date(r.created_at).getTime(), updatedAt: new Date(r.updated_at).getTime()
+      };
+      if (local) await db.orders.update(local.id!, updated);
+      else await db.orders.add(updated);
+    }
+  }
 
-  let pullCount = 0;
-  if (remoteChanges && remoteChanges.length > 0) {
-    for (const remote of remoteChanges) {
-      if (!remote.uuid) continue;
-      const local = await db.orders.where('uuid').equals(remote.uuid).first();
-      const remoteUpdatedAt = remote.updated_at ? new Date(remote.updated_at).getTime() : 0;
-      
-      if (!local || remoteUpdatedAt > (local.updatedAt || 0)) {
-        const orderData: Order = {
-          ...(local || {}),
-          uuid: remote.uuid,
-          customer: remote.customer,
-          city: remote.city,
-          material: remote.material,
-          qty: remote.qty,
-          status: remote.status,
-          note: remote.note,
-          attachments: remote.attachments,
-          createdAt: remote.created_at ? new Date(remote.created_at).getTime() : (local?.createdAt || now),
-          updatedAt: remoteUpdatedAt || now
-        };
-        
-        if (local && local.id) {
-          await db.orders.update(local.id, orderData as any);
-        } else {
-          await db.orders.put(orderData);
-        }
-        pullCount++;
-      }
+  const { data: remoteShipments } = await client.from('shipments').select('*').gt('updated_at', new Date(lastSync).toISOString());
+  if (remoteShipments) {
+    for (const r of remoteShipments) {
+      const local = await db.shipments.where('uuid').equals(r.uuid).first();
+      const updated = {
+        uuid: r.uuid, reference: r.reference, orderUuids: r.order_uuids, attachments: r.attachments,
+        dispatchDate: new Date(r.dispatch_date).getTime(), note: r.note,
+        createdAt: new Date(r.created_at).getTime(), updatedAt: new Date(r.updated_at).getTime()
+      };
+      if (local) await db.shipments.update(local.id!, updated);
+      else await db.shipments.add(updated);
     }
   }
 
   localStorage.setItem(LAST_SYNC_KEY, now.toString());
-  return { pushed: localChanges.length, pulled: pullCount };
+  return { pushed: localOrderChanges.length + localShipmentChanges.length, pulled: (remoteOrders?.length || 0) + (remoteShipments?.length || 0) };
 };
