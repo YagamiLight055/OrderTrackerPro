@@ -62,7 +62,7 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
       db.orders.get(editId).then(order => {
         if (order) {
           setFormData({
-            uuid: order.uuid,
+            uuid: order.uuid || crypto.randomUUID(), // Ensure UUID even on edit of old data
             customer: order.customer,
             city: order.city,
             material: order.material,
@@ -135,6 +135,9 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
     e.preventDefault();
     const { uuid, customer, city, material, qty, status, note, attachments, createdAt } = formData;
     
+    // Strict UUID validation
+    const validUuid = uuid?.trim() || crypto.randomUUID();
+
     if (!customer.trim() || !city.trim() || !material.trim() || qty <= 0) {
       alert("Please fill all required fields.");
       return;
@@ -142,7 +145,7 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
 
     const now = Date.now();
     const orderData: Order = {
-      uuid,
+      uuid: validUuid,
       customer: customer.trim(),
       city: city.trim(),
       material: material.trim(),
@@ -151,7 +154,7 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
       note: note.trim(),
       attachments,
       createdAt: editId && createdAt ? createdAt : now,
-      updatedAt: now // Track modification time for sync
+      updatedAt: now 
     };
 
     try {
@@ -238,9 +241,14 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="aspect-square rounded-xl border-2 border-dashed border-gray-200 text-gray-400 hover:bg-indigo-50 flex items-center justify-center"
+                disabled={isProcessingImages}
+                className="aspect-square rounded-xl border-2 border-dashed border-gray-200 text-gray-400 hover:bg-indigo-50 flex items-center justify-center disabled:opacity-50"
               >
-                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 4v16m8-8H4" strokeWidth={2} /></svg>
+                {isProcessingImages ? (
+                   <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                   <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 4v16m8-8H4" strokeWidth={2} /></svg>
+                )}
               </button>
             </div>
             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" multiple />
@@ -252,8 +260,8 @@ const AddOrder: React.FC<Props> = ({ editId, onSuccess, onCancel }) => {
             placeholder="Notes..."
           />
           <div className="flex gap-3 pt-6">
-            <button type="submit" className="flex-[2] bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg">Save</button>
-            <button type="button" onClick={onCancel} className="flex-1 bg-gray-100 text-gray-600 font-bold py-4 rounded-2xl">Cancel</button>
+            <button type="submit" className="flex-[2] bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-colors">Save</button>
+            <button type="button" onClick={onCancel} className="flex-1 bg-gray-100 text-gray-600 font-bold py-4 rounded-2xl hover:bg-gray-200 transition-colors">Cancel</button>
           </div>
         </form>
       </div>

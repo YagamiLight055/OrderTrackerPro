@@ -29,9 +29,31 @@ export const initSupabase = () => {
   return supabase;
 };
 
+/**
+ * Ensures all local orders have a UUID. 
+ * Fixes legacy data that might have been created before UUID was mandatory.
+ */
+const repairLocalData = async () => {
+  const legacyOrders = await db.orders.filter(o => !o.uuid).toArray();
+  if (legacyOrders.length > 0) {
+    console.warn(`Repairing ${legacyOrders.length} orders missing UUIDs...`);
+    for (const order of legacyOrders) {
+      if (order.id) {
+        await db.orders.update(order.id, { 
+          uuid: crypto.randomUUID(),
+          updatedAt: Date.now() 
+        });
+      }
+    }
+  }
+};
+
 export const syncWithSupabase = async () => {
   const client = initSupabase();
   if (!client) throw new Error("Cloud configuration missing");
+
+  // 0. REPAIR: Fix missing UUIDs locally before pushing
+  await repairLocalData();
 
   const lastSync = Number(localStorage.getItem(LAST_SYNC_KEY) || 0);
   const now = Date.now();
@@ -41,9 +63,11 @@ export const syncWithSupabase = async () => {
     .filter(order => (order.updatedAt || 0) > lastSync)
     .toArray();
 
-  if (localChanges.length > 0) {
-    // Map local structure to Supabase structure (Postgres)
-    const pushData = localChanges.map(o => ({
+  // Robustness check: Ensure we only push items with valid UUIDs
+  const validLocalChanges = localChanges.filter(o => !!o.uuid);
+
+  if (validLocalChanges.length > 0) {
+    const pushData = validLocalChanges.map(o => ({
       uuid: o.uuid,
       customer: o.customer,
       city: o.city,
@@ -73,11 +97,11 @@ export const syncWithSupabase = async () => {
 
   if (remoteChanges && remoteChanges.length > 0) {
     for (const remote of remoteChanges) {
+      if (!remote.uuid) continue; // Skip malformed remote data
+
       const local = await db.orders.where('uuid').equals(remote.uuid).first();
-      
       const remoteUpdatedAt = remote.updated_at ? new Date(remote.updated_at).getTime() : 0;
       
-      // Merge if remote is newer or doesn't exist locally
       if (!local || remoteUpdatedAt > (local.updatedAt || 0)) {
         const orderData: Order = {
           ...(local || {}),
@@ -94,7 +118,6 @@ export const syncWithSupabase = async () => {
         };
         
         if (local && local.id) {
-          // Fix: Use 'as any' to avoid Dexie UpdateSpec type conflicts with full Order objects containing arrays.
           await db.orders.update(local.id, orderData as any);
         } else {
           await db.orders.put(orderData);
@@ -104,5 +127,5 @@ export const syncWithSupabase = async () => {
   }
 
   localStorage.setItem(LAST_SYNC_KEY, now.toString());
-  return { pushed: localChanges.length, pulled: remoteChanges?.length || 0 };
+  return { pushed: validLocalChanges.length, pulled: remoteChanges?.length || 0 };
 };
