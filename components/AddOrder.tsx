@@ -19,6 +19,7 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
   const [formData, setFormData] = useState<{
     uuid: string;
     orderNo: string;
+    orderDate: string;
     custCode: string;
     customer: string;
     city: string;
@@ -28,8 +29,7 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
     status: string;
     note: string;
     attachments: string[];
-    createdAt: string;
-    // New Logistics state
+    // Technical creation date hidden from form
     invoiceNo: string;
     invoiceDate: string;
     vehicleNo: string;
@@ -38,6 +38,7 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
   }>({
     uuid: crypto.randomUUID(),
     orderNo: '',
+    orderDate: new Date().toISOString().split('T')[0],
     custCode: '',
     customer: '',
     city: '',
@@ -47,9 +48,8 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
     status: 'Pending',
     note: '',
     attachments: [],
-    createdAt: new Date().toISOString().split('T')[0],
     invoiceNo: '',
-    invoiceDate: new Date().toISOString().split('T')[0],
+    invoiceDate: '',
     vehicleNo: '',
     transporter: '',
     lrNo: ''
@@ -109,6 +109,7 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
             setFormData({
               uuid: order.uuid || crypto.randomUUID(), 
               orderNo: order.orderNo || '',
+              orderDate: new Date(order.orderDate).toISOString().split('T')[0],
               custCode: order.custCode || '',
               customer: order.customer,
               city: order.city,
@@ -118,7 +119,6 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
               status: order.status || 'Pending',
               note: order.note || '',
               attachments: order.attachments || [],
-              createdAt: new Date(order.createdAt).toISOString().split('T')[0],
               invoiceNo: order.invoiceNo || '',
               invoiceDate: order.invoiceDate ? new Date(order.invoiceDate).toISOString().split('T')[0] : '',
               vehicleNo: order.vehicleNo || '',
@@ -135,6 +135,7 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
                setFormData({
                  uuid: data.uuid,
                  orderNo: data.order_no || '',
+                 orderDate: data.order_date || new Date(data.created_at).toISOString().split('T')[0],
                  custCode: data.cust_code || '',
                  customer: data.customer,
                  city: data.city,
@@ -144,7 +145,6 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
                  status: data.status,
                  note: data.note,
                  attachments: data.attachments || [],
-                 createdAt: new Date(data.created_at).toISOString().split('T')[0],
                  invoiceNo: data.invoice_no || '',
                  invoiceDate: data.invoice_date ? new Date(data.invoice_date).toISOString().split('T')[0] : '',
                  vehicleNo: data.vehicle_no || '',
@@ -217,23 +217,24 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
     if (isSaving) return;
 
     const { 
-      uuid, orderNo, custCode, customer, city, zipCode, material, qty, status, note, attachments, createdAt,
+      uuid, orderNo, orderDate, custCode, customer, city, zipCode, material, qty, status, note, attachments,
       invoiceNo, invoiceDate, vehicleNo, transporter, lrNo
     } = formData;
     
-    if (!customer.trim() || !city.trim() || !material.trim() || qty <= 0 || !createdAt) {
+    if (!customer.trim() || !city.trim() || !material.trim() || qty <= 0 || !orderDate) {
       alert("Please fill all required fields.");
       return;
     }
 
     setIsSaving(true);
     const now = Date.now();
-    const finalCreatedAt = new Date(`${createdAt}T12:00:00`).getTime();
+    const finalOrderDate = new Date(`${orderDate}T12:00:00`).getTime();
     const finalInvoiceDate = invoiceDate ? new Date(`${invoiceDate}T12:00:00`).getTime() : undefined;
 
     const orderData: Order = {
       uuid: uuid || crypto.randomUUID(),
       orderNo: orderNo.trim(),
+      orderDate: finalOrderDate,
       custCode: custCode.trim(),
       customer: customer.trim(),
       city: city.trim(),
@@ -243,7 +244,7 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
       status: status,
       note: note.trim(),
       attachments,
-      createdAt: finalCreatedAt,
+      createdAt: editId ? (await db.orders.get(editId))?.createdAt || now : now,
       updatedAt: now,
       invoiceNo: invoiceNo.trim(),
       invoiceDate: finalInvoiceDate,
@@ -289,6 +290,30 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
               />
             </div>
             <div>
+              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Order Date</label>
+              <input
+                type="date"
+                value={formData.orderDate}
+                onChange={(e) => setFormData({ ...formData, orderDate: e.target.value })}
+                className="w-full px-5 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold outline-none"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6">
+            <AutocompleteInput
+              label="Customer Name"
+              value={formData.customer}
+              onChange={(val) => setFormData({ ...formData, customer: val })}
+              options={options.customers}
+              placeholder="Search or enter client..."
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div>
               <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Cust Code</label>
               <input
                 type="text"
@@ -298,26 +323,6 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
                 placeholder="Ex: C-101"
               />
             </div>
-          </div>
-
-          <AutocompleteInput
-            label="Customer Name"
-            value={formData.customer}
-            onChange={(val) => setFormData({ ...formData, customer: val })}
-            options={options.customers}
-            placeholder="Search or enter client..."
-            required
-          />
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <AutocompleteInput
-              label="Destination City"
-              value={formData.city}
-              onChange={(val) => setFormData({ ...formData, city: val })}
-              options={options.cities}
-              placeholder="Select city..."
-              required
-            />
             <div>
               <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Zip Code</label>
               <input
@@ -330,14 +335,24 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
             </div>
           </div>
 
-          <AutocompleteInput
-            label="Material"
-            value={formData.material}
-            onChange={(val) => setFormData({ ...formData, material: val })}
-            options={options.materials}
-            placeholder="Search material..."
-            required
-          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <AutocompleteInput
+              label="Destination City"
+              value={formData.city}
+              onChange={(val) => setFormData({ ...formData, city: val })}
+              options={options.cities}
+              placeholder="Select city..."
+              required
+            />
+            <AutocompleteInput
+              label="Material"
+              value={formData.material}
+              onChange={(val) => setFormData({ ...formData, material: val })}
+              options={options.materials}
+              placeholder="Search material..."
+              required
+            />
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
@@ -361,17 +376,6 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
                 {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
               </select>
             </div>
-          </div>
-
-          <div>
-             <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Order Date</label>
-             <input
-                type="date"
-                value={formData.createdAt}
-                onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })}
-                className="w-full px-5 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold outline-none"
-                required
-              />
           </div>
 
           {/* Logistics Section */}

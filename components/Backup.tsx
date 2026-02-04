@@ -86,6 +86,11 @@ const Backup: React.FC = () => {
         const isShipment = !!(item.orderUuids || item.order_uuids || item.reference);
         const targetTable = isShipment ? db.shipments : db.orders;
         if (!item.uuid) item.uuid = crypto.randomUUID();
+        
+        // Normalize column names from CSV to logic fields
+        if (!item.orderDate && item.order_date) item.orderDate = item.order_date;
+        if (!item.orderDate && item.created_at) item.orderDate = item.created_at;
+
         if (typeof item.attachments === 'string') {
           try { item.attachments = JSON.parse(item.attachments); } catch { item.attachments = []; }
         }
@@ -97,7 +102,7 @@ const Backup: React.FC = () => {
         if (existing) {
           await targetTable.update((existing as any).id!, { ...item, updatedAt: Date.now() });
         } else {
-          await targetTable.add({ ...item, updatedAt: Date.now() } as any);
+          await targetTable.add({ ...item, createdAt: Date.now(), updatedAt: Date.now() } as any);
         }
         count++;
       }
@@ -163,55 +168,64 @@ const Backup: React.FC = () => {
   };
 
   const supabaseSqlSchema = `-- 1. Orders Table
-create table public.orders (
-  id bigint generated always as identity primary key,
-  uuid uuid not null unique default gen_random_uuid(),
+CREATE TABLE public.orders (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  uuid uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
   order_no text,
+  order_date date NOT NULL DEFAULT CURRENT_DATE,
   cust_code text,
-  customer text not null,
-  city text not null,
+  customer text NOT NULL,
+  city text NOT NULL,
   zip_code text,
-  material text not null,
-  qty numeric not null default 0,
-  status text default 'Pending',
+  material text NOT NULL,
+  qty numeric NOT NULL DEFAULT 0,
+  status text DEFAULT 'Pending',
   note text,
-  attachments jsonb default '[]'::jsonb,
+  attachments jsonb DEFAULT '[]'::jsonb,
   invoice_no text,
-  invoice_date timestamp with time zone,
+  invoice_date date,
   vehicle_no text,
   transporter text,
   lr_no text,
-  created_at timestamp with time zone default now(),
-  updated_at timestamp with time zone default now()
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now()
 );
+
+-- Indexes for Faster Search
+CREATE INDEX idx_orders_customer ON public.orders(customer);
+CREATE INDEX idx_orders_order_date ON public.orders(order_date);
+CREATE INDEX idx_orders_city ON public.orders(city);
 
 -- 2. Shipments (Archive) Table
-create table public.shipments (
-  id bigint generated always as identity primary key,
-  uuid uuid not null unique default gen_random_uuid(),
-  reference text not null,
-  order_uuids jsonb default '[]'::jsonb,
-  attachments jsonb default '[]'::jsonb,
-  dispatch_date timestamp with time zone default now(),
+CREATE TABLE public.shipments (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  uuid uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+  reference text NOT NULL,
+  order_uuids jsonb DEFAULT '[]'::jsonb,
+  attachments jsonb DEFAULT '[]'::jsonb,
+  dispatch_date timestamp with time zone DEFAULT now(),
   note text,
-  created_at timestamp with time zone default now(),
-  updated_at timestamp with time zone default now()
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now()
 );
 
--- 3. Master Data Tables
-create table public."customersMaster" (
-  id bigint generated always as identity primary key,
-  name text not null unique
+-- Index for Dispatch Date Filtering
+CREATE INDEX idx_shipments_dispatch_date ON public.shipments(dispatch_date);
+
+-- 3. Master Data Tables (Note: Case-sensitive names)
+CREATE TABLE public."customersMaster" (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name text NOT NULL UNIQUE
 );
 
-create table public."citiesMaster" (
-  id bigint generated always as identity primary key,
-  name text not null unique
+CREATE TABLE public."citiesMaster" (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name text NOT NULL UNIQUE
 );
 
-create table public."materialsMaster" (
-  id bigint generated always as identity primary key,
-  name text not null unique
+CREATE TABLE public."materialsMaster" (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name text NOT NULL UNIQUE
 );`;
 
   return (

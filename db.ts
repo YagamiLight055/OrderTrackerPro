@@ -5,6 +5,7 @@ export interface Order {
   id?: number;
   uuid: string;
   orderNo?: string;
+  orderDate: number; // Business Order Date
   custCode?: string;
   customer: string;
   city: string;
@@ -12,11 +13,10 @@ export interface Order {
   material: string;
   qty: number;
   status: string;
-  createdAt: number;
-  updatedAt: number;
+  createdAt: number; // Technical Creation Time
+  updatedAt: number; // Technical Update Time
   note?: string;
   attachments?: string[];
-  // Logistics fields moved to Order level
   invoiceNo?: string;
   invoiceDate?: number;
   vehicleNo?: string;
@@ -51,8 +51,8 @@ export class OrderTrackerDB extends Dexie {
   constructor() {
     super('OrderTrackerDB');
     
-    (this as any).version(11).stores({
-      orders: '++id, &uuid, orderNo, custCode, customer, city, material, qty, status, invoiceNo, vehicleNo, lrNo, createdAt, updatedAt',
+    (this as any).version(12).stores({
+      orders: '++id, &uuid, orderNo, orderDate, custCode, customer, city, material, qty, status, invoiceNo, vehicleNo, lrNo, createdAt, updatedAt',
       shipments: '++id, &uuid, reference, *orderUuids, createdAt, dispatchDate',
       customersMaster: '++id, &name',
       citiesMaster: '++id, &name',

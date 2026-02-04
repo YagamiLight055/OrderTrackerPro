@@ -55,7 +55,12 @@ export const importCsvToSupabase = async (data: any[]) => {
   const nowIso = new Date().toISOString();
 
   const payload = data.map(o => {
-    const parseToIso = (val: any) => {
+    const parseToIsoDate = (val: any) => {
+      if (!val) return null;
+      const d = new Date(isNaN(val) ? val : Number(val));
+      return d.getTime() ? d.toISOString().split('T')[0] : null;
+    };
+    const parseToIsoTimestamp = (val: any) => {
       if (!val) return null;
       const d = new Date(isNaN(val) ? val : Number(val));
       return d.getTime() ? d.toISOString() : null;
@@ -78,6 +83,7 @@ export const importCsvToSupabase = async (data: any[]) => {
     return {
       uuid: o.uuid || crypto.randomUUID(),
       order_no: String(o.orderNo || o.order_no || '').trim(),
+      order_date: parseToIsoDate(o.orderDate || o.order_date || o.createdAt || o.created_at) || nowIso.split('T')[0],
       cust_code: String(o.custCode || o.cust_code || '').trim(),
       customer: String(o.customer || 'Unknown').trim(),
       city: String(o.city || 'Unknown').trim(),
@@ -88,11 +94,11 @@ export const importCsvToSupabase = async (data: any[]) => {
       note: o.note || '',
       attachments: finalAttachments,
       invoice_no: o.invoiceNo || o.invoice_no || '',
-      invoice_date: parseToIso(o.invoiceDate || o.invoice_date),
+      invoice_date: parseToIsoDate(o.invoiceDate || o.invoice_date),
       vehicle_no: o.vehicleNo || o.vehicle_no || '',
       transporter: o.transporter || '',
       lr_no: o.lrNo || o.lr_no || '',
-      created_at: parseToIso(o.createdAt || o.created_at) || nowIso,
+      created_at: parseToIsoTimestamp(o.createdAt || o.created_at) || nowIso,
       updated_at: nowIso
     };
   });
@@ -104,7 +110,6 @@ export const importCsvToSupabase = async (data: any[]) => {
 
 /**
  * importShipmentsCsvToSupabase handles the shipment table synchronization.
- * It ensures that linked Order UUIDs (arrays) are correctly reconstructed from CSV strings.
  */
 export const importShipmentsCsvToSupabase = async (data: any[]) => {
   const client = initSupabase();
@@ -129,7 +134,6 @@ export const importShipmentsCsvToSupabase = async (data: any[]) => {
         const parsed = JSON.parse(rawUuids);
         if (Array.isArray(parsed)) orderUuids = parsed;
       } catch {
-        // Fallback for semicolon separated lists often found in manually edited CSVs
         orderUuids = rawUuids.split(';').map(u => u.trim()).filter(Boolean);
       }
     }
@@ -160,7 +164,6 @@ export const importShipmentsCsvToSupabase = async (data: any[]) => {
     };
   });
 
-  // Upsert with onConflict: 'uuid' ensures shipments are overwritten on match
   const { error } = await client.from('shipments').upsert(payload, { onConflict: 'uuid' });
   if (error) throw new Error(error.message);
   return payload.length;

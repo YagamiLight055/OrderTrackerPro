@@ -22,6 +22,7 @@ const Archive: React.FC<Props> = ({ mode }) => {
   const [attachments, setAttachments] = useState<string[]>([]);
   const [isProcessingImages, setIsProcessingImages] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Online data states
@@ -60,7 +61,7 @@ const Archive: React.FC<Props> = ({ mode }) => {
       fetchOnlineData();
       const supabase = initSupabase();
       if (supabase) {
-        const channel = supabase.channel('archive_realtime_v5')
+        const channel = supabase.channel('archive_realtime_v6')
           .on(
             'postgres_changes' as any, 
             { event: '*', table: 'shipments', schema: 'public' }, 
@@ -105,6 +106,8 @@ const Archive: React.FC<Props> = ({ mode }) => {
       return matchesRef && matchesStart && matchesEnd;
     }).sort((a, b) => b.dispatchDate - a.dispatchDate);
   }, [activeShipments, filterRef, filterStartDate, filterEndDate]);
+
+  const hasActiveFilters = filterStartDate || filterEndDate;
 
   const openedShipment = useMemo(() => 
     activeShipments.find(s => s.uuid === openedShipmentUuid), 
@@ -224,13 +227,9 @@ const Archive: React.FC<Props> = ({ mode }) => {
     setIsExporting(true);
     try {
       const csvData = activeShipments.map(s => {
-        // Find orders linked to this shipment to get logistics info
         const linked = s.orderUuids
           .map(uuid => activeOrders.find(o => o.uuid === uuid))
           .filter(Boolean) as Order[];
-        
-        // Use details from the first order as representative of the batch
-        // Fix: Explicitly cast to Partial<Order> to avoid type error when linked[0] is undefined
         const primary = (linked[0] || {}) as Partial<Order>;
 
         return {
@@ -488,19 +487,51 @@ const Archive: React.FC<Props> = ({ mode }) => {
         </div>
       </header>
 
-      <div className="bg-white p-4 md:p-6 rounded-[2rem] shadow-sm border border-gray-100 mb-8">
-        <div className="relative w-full">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-          </span>
-          <input
-            type="text"
-            placeholder="Search by Batch Reference..."
-            value={filterRef}
-            onChange={(e) => setFilterRef(e.target.value)}
-            className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold text-gray-900"
-          />
+      <div className="bg-white p-4 md:p-6 rounded-[2rem] shadow-sm border border-gray-100 mb-8 space-y-4 sticky top-[80px] z-30">
+        <div className="flex flex-col md:flex-row gap-3 items-center">
+          <div className="relative w-full flex-1">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            </span>
+            <input
+              type="text"
+              placeholder="Search by Batch Reference..."
+              value={filterRef}
+              onChange={(e) => setFilterRef(e.target.value)}
+              className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold text-gray-900"
+            />
+          </div>
+          <div className="flex gap-2 w-full md:w-auto">
+            <button 
+              onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+              className={`flex-1 md:flex-none px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all border ${isFilterExpanded ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-100' : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'}`}
+            >
+              <svg className={`w-4 h-4 transition-transform duration-300 ${isFilterExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M19 9l-7 7-7-7" /></svg>
+              Dispatch Range {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-red-500"></span>}
+            </button>
+            {(hasActiveFilters || filterRef) && (
+              <button 
+                onClick={() => { setFilterRef(''); setFilterStartDate(''); setFilterEndDate(''); }} 
+                className="p-3.5 bg-gray-50 text-gray-400 rounded-2xl hover:text-gray-900 hover:bg-gray-100 transition-colors border border-gray-100"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            )}
+          </div>
         </div>
+
+        {isFilterExpanded && (
+          <div className="grid grid-cols-2 gap-3 pt-4 border-t border-gray-50 animate-in slide-in-from-top-4 duration-300">
+             <div className="flex flex-col">
+                <label className="text-[9px] font-black text-gray-400 uppercase mb-1 ml-1 tracking-widest">Dispatch From</label>
+                <input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} className="px-3 py-2 bg-gray-50 border border-transparent rounded-xl text-[11px] font-bold shadow-sm focus:bg-white focus:border-indigo-100 outline-none" />
+             </div>
+             <div className="flex flex-col">
+                <label className="text-[9px] font-black text-gray-400 uppercase mb-1 ml-1 tracking-widest">Dispatch To</label>
+                <input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} className="px-3 py-2 bg-gray-50 border border-transparent rounded-xl text-[11px] font-bold shadow-sm focus:bg-white focus:border-indigo-100 outline-none" />
+             </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">

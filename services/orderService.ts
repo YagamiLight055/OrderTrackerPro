@@ -5,7 +5,7 @@ import { StorageMode } from '../types';
 
 export const getOrders = async (mode: StorageMode): Promise<Order[]> => {
   if (mode === StorageMode.OFFLINE) {
-    return db.orders.reverse().sortBy('createdAt');
+    return db.orders.reverse().sortBy('orderDate');
   } else {
     const supabase = initSupabase();
     if (!supabase) throw new Error("Remote access not configured");
@@ -13,7 +13,7 @@ export const getOrders = async (mode: StorageMode): Promise<Order[]> => {
     const { data, error } = await supabase
       .from('orders')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('order_date', { ascending: false });
     
     if (error) throw error;
     
@@ -21,6 +21,7 @@ export const getOrders = async (mode: StorageMode): Promise<Order[]> => {
       id: remote.id,
       uuid: remote.uuid,
       orderNo: remote.order_no,
+      orderDate: new Date(remote.order_date).getTime(),
       custCode: remote.cust_code,
       customer: remote.customer,
       city: remote.city,
@@ -55,6 +56,7 @@ export const saveOrder = async (mode: StorageMode, order: Order, editId?: number
     const payload = {
       uuid: order.uuid,
       order_no: order.orderNo,
+      order_date: new Date(order.orderDate).toISOString().split('T')[0],
       cust_code: order.custCode,
       customer: order.customer,
       city: order.city,
@@ -65,7 +67,7 @@ export const saveOrder = async (mode: StorageMode, order: Order, editId?: number
       note: order.note,
       attachments: order.attachments,
       invoice_no: order.invoiceNo,
-      invoice_date: order.invoiceDate ? new Date(order.invoiceDate).toISOString() : null,
+      invoice_date: order.invoiceDate ? new Date(order.invoiceDate).toISOString().split('T')[0] : null,
       vehicle_no: order.vehicleNo,
       transporter: order.transporter,
       lr_no: order.lrNo,
@@ -73,8 +75,6 @@ export const saveOrder = async (mode: StorageMode, order: Order, editId?: number
       updated_at: new Date().toISOString()
     };
 
-    // Use upsert with onConflict: 'uuid' to ensure no duplicates are created
-    // even if the user saves multiple times or network retries occur.
     const { error } = await supabase
       .from('orders')
       .upsert(payload, { onConflict: 'uuid' });
