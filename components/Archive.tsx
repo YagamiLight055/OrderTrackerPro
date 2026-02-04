@@ -6,6 +6,7 @@ import { StorageMode } from '../types';
 import { getShipments, saveShipment, deleteShipment } from '../services/shipmentService';
 import { getOrders } from '../services/orderService';
 import { initSupabase } from '../services/syncService';
+import { exportToCSV } from '../services/csvService';
 
 interface Props {
   mode: StorageMode;
@@ -15,11 +16,12 @@ const Archive: React.FC<Props> = ({ mode }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [openedShipmentUuid, setOpenedShipmentUuid] = useState<string | null>(null);
   const [selectedOrderUuids, setSelectedOrderUuids] = useState<Set<string>>(new Set());
-  const [reference, setReference] = useState('');
   const [dispatchDate, setDispatchDate] = useState(new Date().toISOString().split('T')[0]);
+  const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
   const [attachments, setAttachments] = useState<string[]>([]);
   const [isProcessingImages, setIsProcessingImages] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Online data states
@@ -31,7 +33,6 @@ const Archive: React.FC<Props> = ({ mode }) => {
   const [filterRef, setFilterRef] = useState('');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
-  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
 
   // Local data
   const localOrders = useLiveQuery(() => db.orders.toArray());
@@ -59,7 +60,7 @@ const Archive: React.FC<Props> = ({ mode }) => {
       fetchOnlineData();
       const supabase = initSupabase();
       if (supabase) {
-        const channel = supabase.channel('archive_realtime_v4')
+        const channel = supabase.channel('archive_realtime_v5')
           .on(
             'postgres_changes' as any, 
             { event: '*', table: 'shipments', schema: 'public' }, 
@@ -91,7 +92,8 @@ const Archive: React.FC<Props> = ({ mode }) => {
 
   const filteredShipments = useMemo(() => {
     return activeShipments.filter(s => {
-      const matchesRef = !filterRef || s.reference.toLowerCase().includes(filterRef.toLowerCase());
+      const mainRef = s.reference || '';
+      const matchesRef = !filterRef || mainRef.toLowerCase().includes(filterRef.toLowerCase());
       
       const sDate = new Date(s.dispatchDate).setHours(0,0,0,0);
       const start = filterStartDate ? new Date(filterStartDate).setHours(0,0,0,0) : null;
@@ -176,13 +178,13 @@ const Archive: React.FC<Props> = ({ mode }) => {
 
   const handleCreateShipment = async () => {
     if (!reference.trim() || selectedOrderUuids.size === 0 || !dispatchDate) {
-      alert("Required: Reference, Dispatch Date, and at least one order.");
+      alert("Required: Batch Reference, Dispatch Date, and at least one order.");
       return;
     }
 
     const newShipment: Shipment = {
       uuid: crypto.randomUUID(),
-      reference: reference.trim(),
+      reference: reference.trim(), 
       orderUuids: Array.from(selectedOrderUuids),
       attachments,
       note: note.trim(),
@@ -193,8 +195,8 @@ const Archive: React.FC<Props> = ({ mode }) => {
 
     try {
       await saveShipment(mode, newShipment);
-      setReference('');
       setNote('');
+      setReference('');
       setAttachments([]);
       setSelectedOrderUuids(new Set());
       setDispatchDate(new Date().toISOString().split('T')[0]);
@@ -214,15 +216,52 @@ const Archive: React.FC<Props> = ({ mode }) => {
     }
   };
 
-  const hasActiveFilters = filterRef || filterStartDate || filterEndDate;
+  const handleExportArchive = () => {
+    if (activeShipments.length === 0) {
+      alert("Archive is empty.");
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const csvData = activeShipments.map(s => {
+        // Find orders linked to this shipment to get logistics info
+        const linked = s.orderUuids
+          .map(uuid => activeOrders.find(o => o.uuid === uuid))
+          .filter(Boolean) as Order[];
+        
+        // Use details from the first order as representative of the batch
+        // Fix: Explicitly cast to Partial<Order> to avoid type error when linked[0] is undefined
+        const primary = (linked[0] || {}) as Partial<Order>;
 
-  // --- DETAIL MANIFEST VIEW ---
+        return {
+          BatchReference: s.reference,
+          'Dispatch Date': new Date(s.dispatchDate).toISOString().split('T')[0],
+          'Invoice Number': primary.invoiceNo || '',
+          'Invoice Date': primary.invoiceDate ? new Date(primary.invoiceDate).toISOString().split('T')[0] : '',
+          'Vehicle Number': primary.vehicleNo || '',
+          Transporter: primary.transporter || '',
+          'LR Number': primary.lrNo || '',
+          'Order Count': linked.length,
+          'Total Quantity': linked.reduce((sum, o) => sum + o.qty, 0),
+          'Order UUIDs': s.orderUuids.join('; '),
+          Notes: s.note || ''
+        };
+      });
+
+      exportToCSV(csvData, `shipment_archive_export_${new Date().toISOString().split('T')[0]}.csv`);
+    } catch (err) {
+      console.error(err);
+      alert("CSV Export failed.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   if (openedShipment && openedShipmentUuid) {
     const totalQty = openedShipmentOrders.reduce((sum, o) => sum + o.qty, 0);
 
     return (
       <div className="fixed inset-0 z-[100] bg-gray-50 flex flex-col animate-in slide-in-from-right duration-500 overflow-hidden">
-        {/* Detail Header */}
         <header className="bg-white border-b border-gray-100 px-4 md:px-8 py-4 flex items-center justify-between sticky top-0 z-10 shadow-sm">
           <div className="flex items-center gap-4">
             <button 
@@ -234,9 +273,8 @@ const Archive: React.FC<Props> = ({ mode }) => {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">Archive Manifest</span>
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">ID: {openedShipment.uuid.split('-')[0]}</span>
               </div>
-              <h2 className="text-2xl font-black text-gray-900 tracking-tighter uppercase leading-none mt-1">Ref: {openedShipment.reference}</h2>
+              <h2 className="text-2xl font-black text-gray-900 tracking-tighter uppercase leading-none mt-1">{openedShipment.reference}</h2>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -251,23 +289,21 @@ const Archive: React.FC<Props> = ({ mode }) => {
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8">
            <div className="max-w-6xl mx-auto space-y-12">
-              {/* Stats & Metadata Overview */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col justify-center">
-                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Total Load Weight</p>
-                   <p className="text-4xl font-black text-gray-900">{totalQty.toLocaleString()} <span className="text-sm font-bold text-gray-300">UNITS</span></p>
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Total Units</p>
+                   <p className="text-3xl font-black text-gray-900">{totalQty.toLocaleString()}</p>
                 </div>
-                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col justify-center">
-                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Manifest Size</p>
-                   <p className="text-4xl font-black text-gray-900">{openedShipmentOrders.length} <span className="text-sm font-bold text-gray-300">ORDERS</span></p>
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Orders Bundled</p>
+                   <p className="text-3xl font-black text-gray-900">{openedShipmentOrders.length}</p>
                 </div>
-                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col justify-center">
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Dispatch Date</p>
-                   <p className="text-4xl font-black text-indigo-600">{new Date(openedShipment.dispatchDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                   <p className="text-3xl font-black text-indigo-600">{new Date(openedShipment.dispatchDate).toLocaleDateString()}</p>
                 </div>
               </div>
 
-              {/* Loading Proof Section */}
               {openedShipment.attachments.length > 0 && (
                 <section>
                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] mb-4 ml-2">Loading Proof Gallery</h3>
@@ -286,54 +322,23 @@ const Archive: React.FC<Props> = ({ mode }) => {
                 </section>
               )}
 
-              {openedShipment.note && (
-                <section className="bg-white p-8 rounded-[3rem] border-2 border-dashed border-gray-200">
-                   <h3 className="text-xs font-black text-indigo-400 uppercase tracking-[0.3em] mb-4">Shipment Supervisor Notes</h3>
-                   <p className="text-lg font-medium text-gray-700 leading-relaxed italic">"{openedShipment.note}"</p>
-                </section>
-              )}
-
-              {/* Orders List Section */}
-              <section className="space-y-6">
+              <section className="space-y-6 pb-20">
                 <div className="flex items-center justify-between mb-8">
                    <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter">Items in Manifest</h3>
-                   <div className="h-px flex-1 mx-8 bg-gray-100 hidden md:block"></div>
                 </div>
 
                 <div className="space-y-4">
                    {openedShipmentOrders.map((order, idx) => (
-                      <div key={order.uuid} className="bg-white rounded-[2.5rem] p-6 md:p-8 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                      <div key={order.uuid} className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-gray-100">
                         <div className="flex flex-col md:flex-row gap-6">
                            <div className="bg-gray-50 rounded-[2rem] w-full md:w-32 h-32 flex flex-col items-center justify-center text-center p-4">
-                              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Order qty</span>
+                              <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">qty</span>
                               <p className="text-2xl font-black text-gray-900">{order.qty}</p>
                            </div>
-                           <div className="flex-1 space-y-4">
-                              <div className="flex flex-wrap items-center justify-between gap-4">
-                                 <div>
-                                    <h4 className="text-xl font-black text-gray-900">{order.customer}</h4>
-                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">{order.city} • {order.material}</p>
-                                 </div>
-                                 <div className="flex items-center gap-3">
-                                    <span className="px-3 py-1.5 bg-gray-50 text-gray-500 border border-gray-100 rounded-xl text-[10px] font-black uppercase tracking-widest">
-                                       {order.status}
-                                    </span>
-                                 </div>
-                              </div>
-                              {order.note && <p className="text-sm text-gray-500 bg-gray-50 px-4 py-3 rounded-2xl italic">Note: {order.note}</p>}
-                              
-                              {order.attachments && order.attachments.length > 0 && (
-                                <div className="flex gap-3 overflow-x-auto no-scrollbar pt-2">
-                                   {order.attachments.map((img, i) => (
-                                      <img 
-                                        key={i} 
-                                        src={img} 
-                                        className="w-16 h-16 rounded-2xl object-cover border border-gray-100 shadow-sm hover:scale-105 transition-transform" 
-                                        alt="item detail" 
-                                      />
-                                   ))}
-                                </div>
-                              )}
+                           <div className="flex-1 space-y-2">
+                              <h4 className="text-lg font-black text-gray-900">{order.customer} <span className="text-xs font-bold text-gray-400 ml-2">#{order.orderNo}</span></h4>
+                              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{order.city} • {order.material}</p>
+                              {order.lrNo && <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">LR: {order.lrNo} • {order.vehicleNo}</p>}
                            </div>
                         </div>
                       </div>
@@ -346,17 +351,14 @@ const Archive: React.FC<Props> = ({ mode }) => {
     );
   }
 
-  // --- CREATION VIEW ---
   if (isCreating) {
     return (
       <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 pb-24 px-2">
         <div className="bg-white rounded-[3rem] shadow-2xl p-8 border border-gray-100 mb-8">
           <header className="mb-8 flex justify-between items-center">
             <div>
-              <h2 className="text-3xl font-black text-gray-900 uppercase tracking-tighter">New Shipment</h2>
-              <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-1">
-                {mode === StorageMode.ONLINE ? 'Supabase Live' : 'Standalone Local'} Mode
-              </p>
+              <h2 className="text-3xl font-black text-gray-900 uppercase tracking-tighter">New Shipment Bundle</h2>
+              <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-1">Environment: {mode}</p>
             </div>
             <button onClick={() => setIsCreating(false)} className="text-gray-400 hover:text-gray-900 transition-colors">
               <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -366,48 +368,42 @@ const Archive: React.FC<Props> = ({ mode }) => {
           <div className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Shipment Reference (Truck/CNTR)</label>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Batch Reference</label>
                 <input
                   type="text"
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
-                  className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl shadow-inner font-black text-lg focus:ring-2 focus:ring-indigo-500 transition-all"
-                  placeholder="Ex: T-402-B"
+                  className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl shadow-inner font-black text-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Ex: TRIP-AUG-24"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Actual Dispatch Date</label>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Dispatch Date</label>
                 <input
                   type="date"
                   value={dispatchDate}
                   onChange={(e) => setDispatchDate(e.target.value)}
-                  className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl shadow-inner font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl shadow-inner font-bold outline-none"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-               <div className="flex flex-col">
+               <div>
                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 ml-1">Select Orders ({selectedOrderUuids.size})</label>
-                  <div className="bg-gray-50 rounded-[2.5rem] p-4 h-[400px] overflow-auto shadow-inner space-y-2 border border-gray-100 custom-scrollbar">
+                  <div className="bg-gray-50 rounded-[2rem] p-4 h-[350px] overflow-auto shadow-inner space-y-2 border border-gray-100">
                      {availableOrders.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                           <p className="text-gray-300 font-black text-lg italic uppercase tracking-widest">No available orders</p>
-                           <p className="text-gray-400 text-[10px] font-bold uppercase mt-2">All orders are already in shipments.</p>
-                        </div>
+                        <p className="text-center p-8 text-gray-300 font-bold italic">No pending orders</p>
                      ) : (
                         availableOrders.map(order => (
                            <div 
                              key={order.uuid} 
                              onClick={() => handleToggleOrder(order.uuid)}
-                             className={`p-5 rounded-[1.75rem] cursor-pointer transition-all border-2 flex items-center gap-4 ${selectedOrderUuids.has(order.uuid) ? 'bg-indigo-600 border-indigo-600 shadow-xl' : 'bg-white border-transparent hover:border-indigo-100'}`}
+                             className={`p-4 rounded-2xl cursor-pointer transition-all border-2 flex items-center gap-3 ${selectedOrderUuids.has(order.uuid) ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-transparent hover:border-indigo-100'}`}
                            >
-                              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedOrderUuids.has(order.uuid) ? 'bg-white border-white' : 'border-gray-200'}`}>
-                                 {selectedOrderUuids.has(order.uuid) && <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={5}><path d="M5 13l4 4L19 7" /></svg>}
-                              </div>
-                              <div className="flex-1 truncate">
-                                 <p className={`text-sm font-black ${selectedOrderUuids.has(order.uuid) ? 'text-white' : 'text-gray-900'}`}>{order.customer}</p>
-                                 <p className={`text-[10px] font-bold uppercase tracking-widest ${selectedOrderUuids.has(order.uuid) ? 'text-indigo-100' : 'text-gray-400'}`}>{order.city} • {order.qty} units</p>
+                              <div className="flex-1">
+                                 <p className="text-sm font-black">{order.customer}</p>
+                                 <p className={`text-[9px] font-bold uppercase tracking-widest ${selectedOrderUuids.has(order.uuid) ? 'text-indigo-100' : 'text-gray-400'}`}>{order.city} • {order.qty} units • {order.lrNo || 'No LR'}</p>
                               </div>
                            </div>
                         ))
@@ -415,61 +411,46 @@ const Archive: React.FC<Props> = ({ mode }) => {
                   </div>
                </div>
 
-               <div className="space-y-8">
+               <div className="space-y-6">
                   <div>
-                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Loading Proof Photos</label>
-                    <div className="grid grid-cols-3 gap-4">
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Bundle Proof Photos</label>
+                    <div className="grid grid-cols-3 gap-3">
                       {attachments.map((src, idx) => (
-                        <div key={idx} className="relative aspect-square rounded-[1.5rem] overflow-hidden border-2 border-white shadow-lg group">
+                        <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
                           <img src={src} className="w-full h-full object-cover" alt="proof" />
-                          <button 
-                            type="button"
-                            onClick={() => setAttachments(p => p.filter((_, i) => i !== idx))}
-                            className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full shadow-xl opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path d="M6 18L18 6M6 6l12 12" /></svg>
-                          </button>
                         </div>
                       ))}
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        disabled={isProcessingImages}
-                        className="aspect-square rounded-[1.5rem] border-2 border-dashed border-gray-200 text-gray-400 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 transition-all flex flex-col items-center justify-center shadow-inner group"
+                        className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 text-gray-400 hover:bg-indigo-50 flex flex-col items-center justify-center"
                       >
-                         {isProcessingImages ? (
-                           <div className="w-6 h-6 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                         ) : (
-                           <>
-                            <svg className="w-8 h-8 mb-1 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 4v16m8-8H4" /></svg>
-                            <span className="text-[9px] font-black uppercase tracking-widest">Attach Proof</span>
-                           </>
-                         )}
+                         <svg className="w-6 h-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 4v16m8-8H4" strokeWidth={3} /></svg>
+                         <span className="text-[8px] font-black uppercase">Attach</span>
                       </button>
                     </div>
                     <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" multiple />
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Dispatch Notes</label>
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Archive Notes</label>
                     <textarea
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
-                      className="w-full px-6 py-5 bg-gray-50 border-none rounded-[2rem] shadow-inner min-h-[140px] font-medium focus:ring-2 focus:ring-indigo-500 transition-all"
-                      placeholder="Driver info, carrier ID, or loading details..."
+                      className="w-full px-5 py-4 bg-gray-50 border-none rounded-[1.5rem] shadow-inner min-h-[120px] font-medium"
+                      placeholder="Operational details for this batch..."
                     />
                   </div>
                </div>
             </div>
 
-            <div className="pt-8 border-t border-gray-100 flex gap-4">
+            <div className="pt-8 flex gap-4">
               <button 
                 onClick={handleCreateShipment}
-                className={`flex-1 font-black py-5 rounded-[2.25rem] shadow-2xl transition-all active:scale-95 uppercase tracking-widest text-sm ${mode === StorageMode.ONLINE ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'} text-white`}
+                className={`flex-1 font-black py-5 rounded-[2rem] shadow-xl text-white uppercase tracking-widest text-sm ${mode === StorageMode.ONLINE ? 'bg-blue-600' : 'bg-indigo-600'}`}
               >
-                Seal & Archive Bundle
+                Archive Shipment Bundle
               </button>
-              <button onClick={() => setIsCreating(false)} className="px-12 py-5 bg-gray-100 text-gray-500 font-black rounded-[2.25rem] hover:bg-gray-200 transition-all uppercase tracking-widest text-xs">Cancel</button>
             </div>
           </div>
         </div>
@@ -477,7 +458,6 @@ const Archive: React.FC<Props> = ({ mode }) => {
     );
   }
 
-  // --- ARCHIVE GRID VIEW ---
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-6xl mx-auto pb-24 px-2">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -485,85 +465,52 @@ const Archive: React.FC<Props> = ({ mode }) => {
           <h2 className="text-4xl font-black text-gray-900 uppercase tracking-tighter">Shipment Archives</h2>
           <p className="text-gray-400 font-bold uppercase text-[10px] tracking-[0.3em] mt-1">Management Hub</p>
         </div>
-        <button 
-          onClick={() => setIsCreating(true)}
-          className={`px-8 py-5 rounded-[1.75rem] font-black uppercase tracking-widest text-xs shadow-2xl transition-all flex items-center gap-3 active:scale-95 ${mode === StorageMode.ONLINE ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-100' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'} text-white`}
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 4v16m8-8H4" /></svg>
-          Bundle New Shipment
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button 
+            onClick={handleExportArchive}
+            disabled={isExporting}
+            className="px-6 py-5 rounded-[1.75rem] font-black uppercase tracking-widest text-xs shadow-xl transition-all flex items-center gap-3 active:scale-95 bg-white text-gray-600 border border-gray-100 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {isExporting ? (
+              <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            )}
+            Export Archives
+          </button>
+          <button 
+            onClick={() => setIsCreating(true)}
+            className={`px-8 py-5 rounded-[1.75rem] font-black uppercase tracking-widest text-xs shadow-2xl transition-all flex items-center gap-3 active:scale-95 ${mode === StorageMode.ONLINE ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-100' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'} text-white`}
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M12 4v16m8-8H4" /></svg>
+            Bundle New Shipment
+          </button>
+        </div>
       </header>
 
-      {/* Filter Bar */}
-      <div className="bg-white p-4 md:p-6 rounded-[2.5rem] shadow-xl shadow-gray-200/40 border border-gray-100 sticky top-[84px] z-30 flex flex-col md:flex-row gap-4">
-        <div className="relative flex-1 w-full">
-          <span className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400">
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+      <div className="bg-white p-4 md:p-6 rounded-[2rem] shadow-sm border border-gray-100 mb-8">
+        <div className="relative w-full">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
           </span>
           <input
             type="text"
-            placeholder="Search by Shipment Ref..."
+            placeholder="Search by Batch Reference..."
             value={filterRef}
             onChange={(e) => setFilterRef(e.target.value)}
-            className="w-full pl-14 pr-6 py-4 bg-gray-50 border-none rounded-2xl shadow-inner font-black text-gray-900 focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-gray-300"
+            className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold text-gray-900"
           />
-        </div>
-        <div className="flex gap-2">
-          <button 
-            onClick={() => setIsFilterExpanded(!isFilterExpanded)}
-            className={`px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 transition-all border ${isFilterExpanded ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-100' : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'}`}
-          >
-            <svg className={`w-4 h-4 transition-transform duration-300 ${isFilterExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M19 9l-7 7-7-7" /></svg>
-            Period {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-red-500"></span>}
-          </button>
-          
-          {mode === StorageMode.ONLINE && (
-            <button 
-              onClick={fetchOnlineData}
-              className={`p-4 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-100 transition-all border border-blue-100 ${isLoading ? 'animate-spin' : ''}`}
-            >
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-            </button>
-          )}
-
-          {hasActiveFilters && (
-            <button 
-              onClick={() => { setFilterRef(''); setFilterStartDate(''); setFilterEndDate(''); }} 
-              className="p-4 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 transition-all border border-red-100"
-            >
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-          )}
         </div>
       </div>
 
-      {isFilterExpanded && (
-        <div className="bg-white p-6 rounded-[2.5rem] shadow-2xl shadow-indigo-100/50 border border-indigo-50 grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-top-4 duration-300">
-           <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Dispatch Range (From)</label>
-              <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="w-full px-5 py-4 bg-gray-50 rounded-xl font-bold border-none focus:ring-2 focus:ring-indigo-500 shadow-inner" />
-           </div>
-           <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Dispatch Range (To)</label>
-              <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="w-full px-5 py-4 bg-gray-50 rounded-xl font-bold border-none focus:ring-2 focus:ring-indigo-500 shadow-inner" />
-           </div>
-        </div>
-      )}
-
-      {/* Shipment Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {isLoading && activeShipments.length === 0 ? (
           <div className="col-span-full py-32 text-center">
              <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-             <p className="text-indigo-600 font-black uppercase tracking-widest text-lg">Fetching Archives...</p>
           </div>
         ) : filteredShipments.length === 0 ? (
           <div className="col-span-full py-32 text-center bg-white rounded-[4rem] border-4 border-dashed border-gray-100">
-            <div className="w-24 h-24 bg-gray-50 rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 text-gray-200">
-               <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
-            </div>
             <p className="text-gray-300 font-black text-2xl italic uppercase tracking-tighter">No Bundles Found</p>
-            <p className="text-gray-400 text-[11px] font-bold uppercase mt-2 tracking-widest">Bundle existing orders into a shipment reference.</p>
           </div>
         ) : (
           filteredShipments.map(shipment => {
@@ -574,66 +521,28 @@ const Archive: React.FC<Props> = ({ mode }) => {
                <div 
                  key={shipment.uuid} 
                  onClick={() => setOpenedShipmentUuid(shipment.uuid)}
-                 className="bg-white rounded-[3rem] p-8 shadow-sm border border-gray-50 hover:shadow-2xl hover:shadow-indigo-100/50 transition-all duration-500 flex flex-col group relative overflow-hidden cursor-pointer active:scale-[0.98]"
+                 className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-50 hover:shadow-2xl hover:shadow-indigo-100/50 transition-all duration-500 flex flex-col group cursor-pointer"
                >
-                 <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50/30 rounded-full -mr-16 -mt-16 group-hover:bg-indigo-100/50 transition-colors"></div>
-                 
-                 <div className="flex justify-between items-start mb-8 relative z-10">
-                    <div className="flex-1 truncate mr-4">
-                       <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full mb-3 inline-block shadow-sm ${mode === StorageMode.ONLINE ? 'bg-blue-50 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                 <div className="flex justify-between items-start mb-6">
+                    <div>
+                       <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full mb-2 inline-block ${mode === StorageMode.ONLINE ? 'bg-blue-50 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
                          Ref: {shipment.reference}
                        </span>
-                       <h3 className="text-2xl font-black text-gray-900 leading-tight truncate">{linked.length} Order{linked.length !== 1 ? 's' : ''}</h3>
-                       <div className="flex items-center gap-2 mt-2">
-                          <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Disp: {new Date(shipment.dispatchDate).toLocaleDateString()}</p>
-                       </div>
+                       <h3 className="text-xl font-black text-gray-900 leading-tight">{linked.length} Orders</h3>
+                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Disp: {new Date(shipment.dispatchDate).toLocaleDateString()}</p>
                     </div>
-                    <div className={`${mode === StorageMode.ONLINE ? 'bg-blue-600 shadow-blue-200' : 'bg-indigo-600 shadow-indigo-200'} rounded-2xl p-4 text-center min-w-[70px] shadow-xl group-hover:scale-110 transition-transform`}>
+                    <div className={`${mode === StorageMode.ONLINE ? 'bg-blue-600' : 'bg-indigo-600'} rounded-2xl p-4 text-center min-w-[70px]`}>
                        <span className="block text-[10px] text-white opacity-70 font-black uppercase tracking-tighter">Units</span>
                        <span className="block text-2xl font-black text-white leading-none mt-1">{totalQty.toLocaleString()}</span>
                     </div>
                  </div>
-
-                 <div className="flex-1 mb-6 relative z-10">
-                    <div className="flex flex-wrap gap-2 mb-4">
-                       {linked.slice(0, 3).map(o => (
-                          <span key={o.uuid} className="text-[9px] font-bold text-gray-600 bg-gray-50 border border-gray-100 px-2.5 py-1.5 rounded-xl truncate max-w-[120px]">{o.customer}</span>
-                       ))}
-                       {linked.length > 3 && (
-                          <span className="text-[9px] font-black text-indigo-400 bg-indigo-50 px-2.5 py-1.5 rounded-xl">+{linked.length - 3} More</span>
-                       )}
-                    </div>
-                    {shipment.note && (
-                       <p className="text-sm font-medium text-gray-500 italic bg-gray-50/50 p-4 rounded-2xl border border-gray-100/50 line-clamp-2 leading-relaxed">
-                          {shipment.note}
-                       </p>
-                    )}
-                 </div>
-
-                 {shipment.attachments.length > 0 && (
-                    <div className="flex gap-3 overflow-x-auto no-scrollbar mb-6 relative z-10 pb-2">
-                       {shipment.attachments.slice(0, 4).map((src, i) => (
-                          <img key={i} src={src} className="w-14 h-14 rounded-[1.25rem] object-cover border-2 border-white shadow-md flex-shrink-0" alt="loading-proof" />
-                       ))}
-                       {shipment.attachments.length > 4 && (
-                          <div className="w-14 h-14 rounded-[1.25rem] bg-gray-100 flex items-center justify-center text-[10px] font-black text-gray-400 border-2 border-white shadow-md flex-shrink-0">
-                             +{shipment.attachments.length - 4}
-                          </div>
-                       )}
-                    </div>
-                 )}
-
-                 <div className="flex justify-between items-center pt-6 border-t border-gray-50 relative z-10">
+                 
+                 <div className="flex justify-between items-center pt-6 border-t border-gray-50">
                     <div className="flex items-center gap-2 text-indigo-600">
-                       <span className="text-[10px] font-black uppercase tracking-widest">View Manifest</span>
+                       <span className="text-[10px] font-black uppercase tracking-widest">View Details</span>
                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path d="M9 5l7 7-7 7" /></svg>
                     </div>
-                    <button 
-                      onClick={(e) => handleDeleteShipment(shipment, e)}
-                      className="p-3.5 bg-gray-50 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all shadow-sm"
-                      title="Un-bundle Shipment"
-                    >
+                    <button onClick={(e) => handleDeleteShipment(shipment, e)} className="p-2 text-gray-300 hover:text-red-500 transition-colors">
                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                     </button>
                  </div>

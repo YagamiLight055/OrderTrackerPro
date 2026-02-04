@@ -28,14 +28,25 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          # Cache is disabled because package-lock.json is not present in the root
-          # to prevent "Dependencies lock file is not found" error.
 
       - name: Install dependencies
         run: npm install
 
       - name: Build
         run: npm run build
+
+      - name: Prepare Deployment Artifacts
+        run: |
+          # 1. Handle SPA Routing fallback for GitHub Pages
+          cp dist/index.html dist/404.html
+          
+          # 2. Ensure PWA assets are moved to dist if not already there
+          # (Vite ignores root-level .js/.json files unless they are in public/ or imported)
+          [ -f sw.js ] && cp sw.js dist/ || echo "sw.js already in dist or missing"
+          [ -f manifest.json ] && cp manifest.json dist/ || echo "manifest.json already in dist or missing"
+          
+          # 3. List dist contents for debugging logs
+          ls -R dist
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

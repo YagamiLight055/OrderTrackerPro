@@ -97,6 +97,8 @@ const OrdersList: React.FC<Props> = ({ mode, onEdit }) => {
         o.customer.toLowerCase().includes(searchStr) ||
         o.city.toLowerCase().includes(searchStr) ||
         o.material.toLowerCase().includes(searchStr) ||
+        (o.lrNo && o.lrNo.toLowerCase().includes(searchStr)) ||
+        (o.vehicleNo && o.vehicleNo.toLowerCase().includes(searchStr)) ||
         (o.note && o.note.toLowerCase().includes(searchStr));
       
       const matchesCity = !filterCity || o.city.trim() === filterCity;
@@ -147,7 +149,7 @@ const OrdersList: React.FC<Props> = ({ mode, onEdit }) => {
             </span>
             <input
               type="text"
-              placeholder={`Search ${mode === StorageMode.ONLINE ? 'cloud' : 'local'} history...`}
+              placeholder={`Search by Customer, LR or Vehicle...`}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold text-gray-900"
@@ -246,6 +248,11 @@ const OrdersList: React.FC<Props> = ({ mode, onEdit }) => {
                     <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ${getStatusColor(order.status)}`}>
                       {order.status}
                     </span>
+                    {order.lrNo && (
+                      <span className="text-[9px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full border border-blue-100">
+                        LR: {order.lrNo}
+                      </span>
+                    )}
                   </div>
                   <h3 className="text-2xl font-black text-gray-900 leading-none">{order.customer}</h3>
                 </div>
@@ -255,24 +262,36 @@ const OrdersList: React.FC<Props> = ({ mode, onEdit }) => {
                 </div>
               </div>
 
-              <div className="space-y-4 mb-5">
-                <div>
-                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1.5 ml-1">Material Details</span>
-                  <p className="text-sm font-bold text-gray-700 bg-gray-50 border border-gray-100 px-4 py-2.5 rounded-2xl">{order.material}</p>
-                </div>
-
-                {order.note && (
-                  <div>
-                    <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest block mb-1.5 ml-1 flex items-center gap-1.5">
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                      Operational Note
-                    </span>
-                    <p className="text-sm font-medium text-gray-600 bg-indigo-50/30 border border-indigo-100/50 px-4 py-2.5 rounded-2xl italic">
-                      {order.note}
-                    </p>
-                  </div>
-                )}
+              <div className="grid grid-cols-2 gap-4 mb-5">
+                 <div className="col-span-2">
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1.5 ml-1">Material Details</span>
+                    <p className="text-sm font-bold text-gray-700 bg-gray-50 border border-gray-100 px-4 py-2.5 rounded-2xl">{order.material}</p>
+                 </div>
+                 {order.vehicleNo && (
+                   <div>
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1.5 ml-1">Vehicle</span>
+                      <p className="text-xs font-black text-indigo-600 truncate">{order.vehicleNo}</p>
+                   </div>
+                 )}
+                 {order.invoiceNo && (
+                   <div>
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1.5 ml-1">Invoice</span>
+                      <p className="text-xs font-black text-blue-600 truncate">{order.invoiceNo}</p>
+                   </div>
+                 )}
               </div>
+
+              {order.note && (
+                <div className="mb-5">
+                  <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest block mb-1.5 ml-1 flex items-center gap-1.5">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    Operational Note
+                  </span>
+                  <p className="text-sm font-medium text-gray-600 bg-indigo-50/30 border border-indigo-100/50 px-4 py-2.5 rounded-2xl italic">
+                    {order.note}
+                  </p>
+                </div>
+              )}
 
               {order.attachments && order.attachments.length > 0 && (
                 <div className="mb-5">

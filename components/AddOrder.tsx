@@ -18,24 +18,41 @@ const STATUS_OPTIONS = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancel
 const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
   const [formData, setFormData] = useState<{
     uuid: string;
+    orderNo: string;
+    custCode: string;
     customer: string;
     city: string;
+    zipCode: string;
     material: string;
     qty: number;
     status: string;
     note: string;
     attachments: string[];
-    createdAt: string; // ISO string for the date input
+    createdAt: string;
+    // New Logistics state
+    invoiceNo: string;
+    invoiceDate: string;
+    vehicleNo: string;
+    transporter: string;
+    lrNo: string;
   }>({
     uuid: crypto.randomUUID(),
+    orderNo: '',
+    custCode: '',
     customer: '',
     city: '',
+    zipCode: '',
     material: '',
     qty: 0,
     status: 'Pending',
     note: '',
     attachments: [],
-    createdAt: new Date().toISOString().split('T')[0]
+    createdAt: new Date().toISOString().split('T')[0],
+    invoiceNo: '',
+    invoiceDate: new Date().toISOString().split('T')[0],
+    vehicleNo: '',
+    transporter: '',
+    lrNo: ''
   });
 
   const [isProcessingImages, setIsProcessingImages] = useState(false);
@@ -91,14 +108,22 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
           if (order) {
             setFormData({
               uuid: order.uuid || crypto.randomUUID(), 
+              orderNo: order.orderNo || '',
+              custCode: order.custCode || '',
               customer: order.customer,
               city: order.city,
+              zipCode: order.zipCode || '',
               material: order.material,
               qty: order.qty,
               status: order.status || 'Pending',
               note: order.note || '',
               attachments: order.attachments || [],
-              createdAt: new Date(order.createdAt).toISOString().split('T')[0]
+              createdAt: new Date(order.createdAt).toISOString().split('T')[0],
+              invoiceNo: order.invoiceNo || '',
+              invoiceDate: order.invoiceDate ? new Date(order.invoiceDate).toISOString().split('T')[0] : '',
+              vehicleNo: order.vehicleNo || '',
+              transporter: order.transporter || '',
+              lrNo: order.lrNo || ''
             });
           }
         });
@@ -109,14 +134,22 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
              if (data) {
                setFormData({
                  uuid: data.uuid,
+                 orderNo: data.order_no || '',
+                 custCode: data.cust_code || '',
                  customer: data.customer,
                  city: data.city,
+                 zipCode: data.zip_code || '',
                  material: data.material,
                  qty: data.qty,
                  status: data.status,
                  note: data.note,
                  attachments: data.attachments || [],
-                 createdAt: new Date(data.created_at).toISOString().split('T')[0]
+                 createdAt: new Date(data.created_at).toISOString().split('T')[0],
+                 invoiceNo: data.invoice_no || '',
+                 invoiceDate: data.invoice_date ? new Date(data.invoice_date).toISOString().split('T')[0] : '',
+                 vehicleNo: data.vehicle_no || '',
+                 transporter: data.transporter || '',
+                 lrNo: data.lr_no || ''
                });
              }
            });
@@ -183,7 +216,10 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
     e.preventDefault();
     if (isSaving) return;
 
-    const { uuid, customer, city, material, qty, status, note, attachments, createdAt } = formData;
+    const { 
+      uuid, orderNo, custCode, customer, city, zipCode, material, qty, status, note, attachments, createdAt,
+      invoiceNo, invoiceDate, vehicleNo, transporter, lrNo
+    } = formData;
     
     if (!customer.trim() || !city.trim() || !material.trim() || qty <= 0 || !createdAt) {
       alert("Please fill all required fields.");
@@ -192,21 +228,28 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
 
     setIsSaving(true);
     const now = Date.now();
-    
-    // Use the selected date. We set time to 12:00 PM to avoid timezone shifting issues.
     const finalCreatedAt = new Date(`${createdAt}T12:00:00`).getTime();
+    const finalInvoiceDate = invoiceDate ? new Date(`${invoiceDate}T12:00:00`).getTime() : undefined;
 
     const orderData: Order = {
       uuid: uuid || crypto.randomUUID(),
+      orderNo: orderNo.trim(),
+      custCode: custCode.trim(),
       customer: customer.trim(),
       city: city.trim(),
+      zipCode: zipCode.trim(),
       material: material.trim(),
       qty: Number(qty),
       status: status,
       note: note.trim(),
       attachments,
       createdAt: finalCreatedAt,
-      updatedAt: now 
+      updatedAt: now,
+      invoiceNo: invoiceNo.trim(),
+      invoiceDate: finalInvoiceDate,
+      vehicleNo: vehicleNo.trim(),
+      transporter: transporter.trim(),
+      lrNo: lrNo.trim()
     };
 
     try {
@@ -234,21 +277,35 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
         </header>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Order No.</label>
+              <input
+                type="text"
+                value={formData.orderNo}
+                onChange={(e) => setFormData({ ...formData, orderNo: e.target.value })}
+                className="w-full px-5 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold"
+                placeholder="Ex: ORD-5502"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Cust Code</label>
+              <input
+                type="text"
+                value={formData.custCode}
+                onChange={(e) => setFormData({ ...formData, custCode: e.target.value })}
+                className="w-full px-5 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold"
+                placeholder="Ex: C-101"
+              />
+            </div>
+          </div>
+
           <AutocompleteInput
             label="Customer Name"
             value={formData.customer}
             onChange={(val) => setFormData({ ...formData, customer: val })}
             options={options.customers}
             placeholder="Search or enter client..."
-            required
-          />
-
-          <AutocompleteInput
-            label="Material"
-            value={formData.material}
-            onChange={(val) => setFormData({ ...formData, material: val })}
-            options={options.materials}
-            placeholder="Search material..."
             required
           />
 
@@ -262,6 +319,28 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
               required
             />
             <div>
+              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Zip Code</label>
+              <input
+                type="text"
+                value={formData.zipCode}
+                onChange={(e) => setFormData({ ...formData, zipCode: e.target.value })}
+                className="w-full px-5 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold"
+                placeholder="Ex: 400001"
+              />
+            </div>
+          </div>
+
+          <AutocompleteInput
+            label="Material"
+            value={formData.material}
+            onChange={(val) => setFormData({ ...formData, material: val })}
+            options={options.materials}
+            placeholder="Search material..."
+            required
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div>
               <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Quantity</label>
               <input
                 type="number"
@@ -272,9 +351,6 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
                 min="1"
               />
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Order Status</label>
               <select
@@ -285,16 +361,44 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
                 {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Order Date</label>
-              <input
+          </div>
+
+          <div>
+             <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Order Date</label>
+             <input
                 type="date"
                 value={formData.createdAt}
                 onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })}
                 className="w-full px-5 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold outline-none"
                 required
               />
-            </div>
+          </div>
+
+          {/* Logistics Section */}
+          <div className="p-6 bg-blue-50/40 rounded-[2rem] border border-blue-100 space-y-4">
+             <h3 className="text-xs font-black text-blue-600 uppercase tracking-[0.2em] mb-4">Logistics & Shipping</h3>
+             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                   <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Invoice Number</label>
+                   <input type="text" value={formData.invoiceNo} onChange={e => setFormData({...formData, invoiceNo: e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold text-sm" placeholder="INV-001" />
+                </div>
+                <div>
+                   <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Invoice Date</label>
+                   <input type="date" value={formData.invoiceDate} onChange={e => setFormData({...formData, invoiceDate: e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold text-sm" />
+                </div>
+                <div>
+                   <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Vehicle Number</label>
+                   <input type="text" value={formData.vehicleNo} onChange={e => setFormData({...formData, vehicleNo: e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold text-sm" placeholder="MH-01-AB-1234" />
+                </div>
+                <div>
+                   <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Transporter</label>
+                   <input type="text" value={formData.transporter} onChange={e => setFormData({...formData, transporter: e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold text-sm" placeholder="Blue Dart" />
+                </div>
+                <div className="sm:col-span-2">
+                   <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">LR / Reference Number</label>
+                   <input type="text" value={formData.lrNo} onChange={e => setFormData({...formData, lrNo: e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold text-sm" placeholder="LR-88991122" />
+                </div>
+             </div>
           </div>
 
           <div>
@@ -343,7 +447,7 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
             <button 
               type="submit" 
               disabled={isSaving}
-              className={`flex-[2] text-white font-black py-5 rounded-2xl shadow-2xl transition-all active:scale-95 disabled:opacity-50 uppercase tracking-widest text-sm ${mode === StorageMode.ONLINE ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'}`}
+              className={`flex-[2] text-white font-black py-5 rounded-2xl shadow-2xl transition-all active:scale-95 disabled:opacity-50 uppercase tracking-widest text-sm ${mode === StorageMode.ONLINE ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'}`}
             >
               {isSaving ? 'Processing...' : (editId ? 'Commit Changes' : 'Save Order')}
             </button>

@@ -5,7 +5,6 @@ import { db, Order, Shipment } from '../db';
 let supabase: SupabaseClient | null = null;
 
 const SYNC_CONFIG_KEY = 'order_tracker_supabase_config';
-const LAST_SYNC_KEY = 'order_tracker_last_sync_time';
 
 interface SyncConfig {
   url: string;
@@ -39,90 +38,130 @@ export const clearSupabaseData = async () => {
   const client = initSupabase();
   if (!client) throw new Error("Supabase not configured.");
 
-  // Clear both tables
   const { error: err1 } = await client.from('orders').delete().neq('uuid', '00000000-0000-0000-0000-000000000000'); 
   const { error: err2 } = await client.from('shipments').delete().neq('uuid', '00000000-0000-0000-0000-000000000000'); 
 
   if (err1) throw err1;
   if (err2) throw err2;
-  
-  localStorage.removeItem(LAST_SYNC_KEY);
 };
 
-export const syncWithSupabase = async () => {
+/**
+ * Normalizes Order CSV data to Supabase schema with LWW conflict resolution.
+ */
+export const importCsvToSupabase = async (data: any[]) => {
   const client = initSupabase();
   if (!client) throw new Error("Cloud Datastore not configured.");
 
-  const storedLastSync = localStorage.getItem(LAST_SYNC_KEY);
-  let lastSync = 0;
-  if (storedLastSync) {
-    const parsed = Number(storedLastSync);
-    if (!isNaN(parsed)) lastSync = parsed;
-  }
-  
-  const now = Date.now();
+  const nowIso = new Date().toISOString();
 
-  // --- ORDERS SYNC ---
-  const localOrderChanges = await db.orders.where('updatedAt').above(lastSync).toArray();
-  if (localOrderChanges.length > 0) {
-    await client.from('orders').upsert(localOrderChanges.map(o => ({
-      uuid: o.uuid,
-      customer: o.customer,
-      city: o.city,
-      material: o.material,
-      qty: o.qty,
-      status: o.status,
-      note: o.note,
-      attachments: o.attachments,
-      created_at: new Date(o.createdAt).toISOString(),
-      updated_at: new Date(o.updatedAt).toISOString()
-    })), { onConflict: 'uuid' });
-  }
+  const payload = data.map(o => {
+    const parseToIso = (val: any) => {
+      if (!val) return null;
+      const d = new Date(isNaN(val) ? val : Number(val));
+      return d.getTime() ? d.toISOString() : null;
+    };
 
-  // --- SHIPMENTS SYNC ---
-  const localShipmentChanges = await db.shipments.where('updatedAt').above(lastSync).toArray();
-  if (localShipmentChanges.length > 0) {
-    await client.from('shipments').upsert(localShipmentChanges.map(s => ({
-      uuid: s.uuid,
-      reference: s.reference,
-      order_uuids: s.orderUuids,
-      attachments: s.attachments,
-      dispatch_date: new Date(s.dispatchDate).toISOString(),
-      note: s.note,
-      created_at: new Date(s.createdAt).toISOString(),
-      updated_at: new Date(s.updatedAt).toISOString()
-    })), { onConflict: 'uuid' });
-  }
-
-  // --- PULL REMOTE ---
-  const { data: remoteOrders } = await client.from('orders').select('*').gt('updated_at', new Date(lastSync).toISOString());
-  if (remoteOrders) {
-    for (const r of remoteOrders) {
-      const local = await db.orders.where('uuid').equals(r.uuid).first();
-      const updated = {
-        uuid: r.uuid, customer: r.customer, city: r.city, material: r.material, qty: r.qty,
-        status: r.status, note: r.note, attachments: r.attachments,
-        createdAt: new Date(r.created_at).getTime(), updatedAt: new Date(r.updated_at).getTime()
-      };
-      if (local) await db.orders.update(local.id!, updated);
-      else await db.orders.add(updated);
+    let finalAttachments = [];
+    if (o.attachments) {
+      if (Array.isArray(o.attachments)) {
+        finalAttachments = o.attachments;
+      } else if (typeof o.attachments === 'string') {
+        try {
+          const parsed = JSON.parse(o.attachments);
+          if (Array.isArray(parsed)) finalAttachments = parsed;
+        } catch (e) {
+          finalAttachments = [o.attachments];
+        }
+      }
     }
-  }
 
-  const { data: remoteShipments } = await client.from('shipments').select('*').gt('updated_at', new Date(lastSync).toISOString());
-  if (remoteShipments) {
-    for (const r of remoteShipments) {
-      const local = await db.shipments.where('uuid').equals(r.uuid).first();
-      const updated = {
-        uuid: r.uuid, reference: r.reference, orderUuids: r.order_uuids, attachments: r.attachments,
-        dispatchDate: new Date(r.dispatch_date).getTime(), note: r.note,
-        createdAt: new Date(r.created_at).getTime(), updatedAt: new Date(r.updated_at).getTime()
-      };
-      if (local) await db.shipments.update(local.id!, updated);
-      else await db.shipments.add(updated);
+    return {
+      uuid: o.uuid || crypto.randomUUID(),
+      order_no: String(o.orderNo || o.order_no || '').trim(),
+      cust_code: String(o.custCode || o.cust_code || '').trim(),
+      customer: String(o.customer || 'Unknown').trim(),
+      city: String(o.city || 'Unknown').trim(),
+      zip_code: String(o.zipCode || o.zip_code || '').trim(),
+      material: String(o.material || 'N/A').trim(),
+      qty: Number(o.qty || 0),
+      status: o.status || 'Pending',
+      note: o.note || '',
+      attachments: finalAttachments,
+      invoice_no: o.invoiceNo || o.invoice_no || '',
+      invoice_date: parseToIso(o.invoiceDate || o.invoice_date),
+      vehicle_no: o.vehicleNo || o.vehicle_no || '',
+      transporter: o.transporter || '',
+      lr_no: o.lrNo || o.lr_no || '',
+      created_at: parseToIso(o.createdAt || o.created_at) || nowIso,
+      updated_at: nowIso
+    };
+  });
+
+  const { error } = await client.from('orders').upsert(payload, { onConflict: 'uuid' });
+  if (error) throw new Error(error.message);
+  return payload.length;
+};
+
+/**
+ * importShipmentsCsvToSupabase handles the shipment table synchronization.
+ * It ensures that linked Order UUIDs (arrays) are correctly reconstructed from CSV strings.
+ */
+export const importShipmentsCsvToSupabase = async (data: any[]) => {
+  const client = initSupabase();
+  if (!client) throw new Error("Cloud Datastore not configured.");
+
+  const nowIso = new Date().toISOString();
+
+  const payload = data.map(s => {
+    const parseToIso = (val: any) => {
+      if (!val) return null;
+      const d = new Date(isNaN(val) ? val : Number(val));
+      return d.getTime() ? d.toISOString() : null;
+    };
+
+    // Normalize order_uuids array
+    let orderUuids = [];
+    const rawUuids = s.orderUuids || s.order_uuids;
+    if (Array.isArray(rawUuids)) {
+      orderUuids = rawUuids;
+    } else if (typeof rawUuids === 'string') {
+      try {
+        const parsed = JSON.parse(rawUuids);
+        if (Array.isArray(parsed)) orderUuids = parsed;
+      } catch {
+        // Fallback for semicolon separated lists often found in manually edited CSVs
+        orderUuids = rawUuids.split(';').map(u => u.trim()).filter(Boolean);
+      }
     }
-  }
 
-  localStorage.setItem(LAST_SYNC_KEY, now.toString());
-  return { pushed: localOrderChanges.length + localShipmentChanges.length, pulled: (remoteOrders?.length || 0) + (remoteShipments?.length || 0) };
+    // Normalize attachments array
+    let attachments = [];
+    const rawAttachments = s.attachments;
+    if (Array.isArray(rawAttachments)) {
+      attachments = rawAttachments;
+    } else if (typeof rawAttachments === 'string') {
+      try {
+        const parsed = JSON.parse(rawAttachments);
+        if (Array.isArray(parsed)) attachments = parsed;
+      } catch {
+        attachments = [rawAttachments];
+      }
+    }
+
+    return {
+      uuid: s.uuid || crypto.randomUUID(),
+      reference: String(s.reference || '').trim(),
+      order_uuids: orderUuids,
+      attachments: attachments,
+      dispatch_date: parseToIso(s.dispatchDate || s.dispatch_date) || nowIso,
+      note: s.note || '',
+      created_at: parseToIso(s.createdAt || s.created_at) || nowIso,
+      updated_at: nowIso
+    };
+  });
+
+  // Upsert with onConflict: 'uuid' ensures shipments are overwritten on match
+  const { error } = await client.from('shipments').upsert(payload, { onConflict: 'uuid' });
+  if (error) throw new Error(error.message);
+  return payload.length;
 };

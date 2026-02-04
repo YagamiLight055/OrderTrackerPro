@@ -3,16 +3,25 @@ import { Dexie, type Table } from 'dexie';
 
 export interface Order {
   id?: number;
-  uuid: string; // Globally unique identifier for cloud sync
+  uuid: string;
+  orderNo?: string;
+  custCode?: string;
   customer: string;
   city: string;
+  zipCode?: string;
   material: string;
   qty: number;
   status: string;
   createdAt: number;
-  updatedAt: number; // Timestamp for sync resolution
+  updatedAt: number;
   note?: string;
-  attachments?: string[]; // Array of base64 strings
+  attachments?: string[];
+  // Logistics fields moved to Order level
+  invoiceNo?: string;
+  invoiceDate?: number;
+  vehicleNo?: string;
+  transporter?: string;
+  lrNo?: string;
 }
 
 export interface Shipment {
@@ -23,7 +32,7 @@ export interface Shipment {
   attachments: string[];
   createdAt: number;
   updatedAt: number;
-  dispatchDate: number; // New: Actual date of dispatch/loading
+  dispatchDate: number;
   note?: string;
 }
 
@@ -42,8 +51,8 @@ export class OrderTrackerDB extends Dexie {
   constructor() {
     super('OrderTrackerDB');
     
-    this.version(9).stores({
-      orders: '++id, &uuid, customer, city, material, qty, status, createdAt, updatedAt',
+    (this as any).version(11).stores({
+      orders: '++id, &uuid, orderNo, custCode, customer, city, material, qty, status, invoiceNo, vehicleNo, lrNo, createdAt, updatedAt',
       shipments: '++id, &uuid, reference, *orderUuids, createdAt, dispatchDate',
       customersMaster: '++id, &name',
       citiesMaster: '++id, &name',
