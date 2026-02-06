@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { db, Order, Shipment } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -186,7 +185,7 @@ const OrdersList: React.FC<Props> = ({ mode, onEdit }) => {
             </button>
             {mode === StorageMode.ONLINE && (
               <button onClick={fetchOnline} disabled={isLoading} className="p-3.5 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-100 transition-colors border border-blue-100">
-                <svg className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                <svg className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357-2H15" /></svg>
               </button>
             )}
             {(hasActiveFilters || searchTerm) && (
@@ -271,7 +270,7 @@ const OrdersList: React.FC<Props> = ({ mode, onEdit }) => {
                {order.attachments && order.attachments.length > 0 && (
                  <div className="flex gap-2 mb-6">
                     {order.attachments.slice(0, 3).map((img, i) => (
-                       <div key={i} onClick={() => setGalleryState({ images: order.attachments!, index: i })} className="w-10 h-10 rounded-xl overflow-hidden border-2 border-white shadow-sm flex-shrink-0 cursor-zoom-in">
+                       <div key={i} onClick={(e) => { e.stopPropagation(); setGalleryState({ images: order.attachments!, index: i }); }} className="w-10 h-10 rounded-xl overflow-hidden border-2 border-white shadow-sm flex-shrink-0 cursor-zoom-in">
                           <img src={img} className="w-full h-full object-cover" alt="proof" />
                        </div>
                     ))}

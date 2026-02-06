@@ -34,7 +34,8 @@ export const getShipments = async (mode: StorageMode): Promise<Shipment[]> => {
 export const saveShipment = async (mode: StorageMode, shipment: Shipment, editId?: number | null) => {
   if (mode === StorageMode.OFFLINE) {
     if (editId) {
-      return await db.shipments.update(editId, shipment);
+      // Fix: Use 'as any' to resolve Dexie UpdateSpec type issues with array properties
+      return await db.shipments.update(editId, shipment as any);
     } else {
       return await db.shipments.add(shipment);
     }

@@ -28,9 +28,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build
         run: npm run build
@@ -38,14 +39,16 @@ jobs:
       - name: Prepare Deployment Artifacts
         run: |
           # 1. Handle SPA Routing fallback for GitHub Pages
+          # This ensures that deep links like /history or /archive work correctly on page refresh
           cp dist/index.html dist/404.html
           
           # 2. Ensure PWA assets are moved to dist if not already there
-          # (Vite ignores root-level .js/.json files unless they are in public/ or imported)
+          # Vite usually handles public/, but if these are at root, we manually copy
           [ -f sw.js ] && cp sw.js dist/ || echo "sw.js already in dist or missing"
           [ -f manifest.json ] && cp manifest.json dist/ || echo "manifest.json already in dist or missing"
           
           # 3. List dist contents for debugging logs
+          echo "Final dist directory structure:"
           ls -R dist
 
       - name: Setup Pages
