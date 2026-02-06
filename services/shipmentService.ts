@@ -31,9 +31,13 @@ export const getShipments = async (mode: StorageMode): Promise<Shipment[]> => {
   }
 };
 
-export const saveShipment = async (mode: StorageMode, shipment: Shipment) => {
+export const saveShipment = async (mode: StorageMode, shipment: Shipment, editId?: number | null) => {
   if (mode === StorageMode.OFFLINE) {
-    return await db.shipments.add(shipment);
+    if (editId) {
+      return await db.shipments.update(editId, shipment);
+    } else {
+      return await db.shipments.add(shipment);
+    }
   } else {
     const supabase = initSupabase();
     if (!supabase) throw new Error("Remote access not configured");
@@ -48,11 +52,17 @@ export const saveShipment = async (mode: StorageMode, shipment: Shipment) => {
       updated_at: new Date().toISOString()
     };
 
-    const { error } = await supabase
-      .from('shipments')
-      .insert({ ...payload, created_at: new Date().toISOString() });
-    
-    if (error) throw error;
+    if (editId || shipment.uuid) {
+      const { error } = await supabase
+        .from('shipments')
+        .upsert({ ...payload, created_at: new Date(shipment.createdAt).toISOString() }, { onConflict: 'uuid' });
+      if (error) throw error;
+    } else {
+      const { error } = await supabase
+        .from('shipments')
+        .insert({ ...payload, created_at: new Date().toISOString() });
+      if (error) throw error;
+    }
   }
 };
 
