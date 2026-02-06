@@ -37,14 +37,15 @@ jobs:
 
       - name: Prepare Deployment Artifacts
         run: |
-          # Handle SPA Routing fallback for GitHub Pages
+          # 1. Handle SPA Routing fallback for GitHub Pages
           cp dist/index.html dist/404.html
           
-          # Ensure PWA assets are moved to dist if not already there
+          # 2. Ensure PWA assets are moved to dist if not already there
+          # (Vite ignores root-level .js/.json files unless they are in public/ or imported)
           [ -f sw.js ] && cp sw.js dist/ || echo "sw.js already in dist or missing"
           [ -f manifest.json ] && cp manifest.json dist/ || echo "manifest.json already in dist or missing"
           
-          echo "Final dist directory structure:"
+          # 3. List dist contents for debugging logs
           ls -R dist
 
       - name: Setup Pages
