@@ -55,14 +55,41 @@ export const importCsvToSupabase = async (data: any[]) => {
   const nowIso = new Date().toISOString();
 
   const payload = data.map(o => {
+    // Normalizes any date value to a local YYYY-MM-DD string for database storage
     const parseToIsoDate = (val: any) => {
       if (!val) return null;
-      const d = new Date(isNaN(val) ? val : Number(val));
-      return d.getTime() ? d.toISOString().split('T')[0] : null;
+      let d: Date;
+      
+      // Support dd.mm.yyyy format from CSV
+      if (typeof val === 'string' && val.includes('.')) {
+        const parts = val.split('.');
+        if (parts.length === 3) {
+          d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), 12, 0, 0);
+        } else {
+          d = new Date(val);
+        }
+      } else {
+        d = new Date(isNaN(val) ? val : Number(val));
+      }
+
+      if (!d.getTime()) return null;
+      
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     };
+    
     const parseToIsoTimestamp = (val: any) => {
       if (!val) return null;
-      const d = new Date(isNaN(val) ? val : Number(val));
+      let d: Date;
+      if (typeof val === 'string' && val.includes('.')) {
+        const parts = val.split('.');
+        if (parts.length === 3) d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), 12, 0, 0);
+        else d = new Date(val);
+      } else {
+        d = new Date(isNaN(val) ? val : Number(val));
+      }
       return d.getTime() ? d.toISOString() : null;
     };
 
@@ -120,11 +147,17 @@ export const importShipmentsCsvToSupabase = async (data: any[]) => {
   const payload = data.map(s => {
     const parseToIso = (val: any) => {
       if (!val) return null;
-      const d = new Date(isNaN(val) ? val : Number(val));
+      let d: Date;
+      if (typeof val === 'string' && val.includes('.')) {
+        const parts = val.split('.');
+        if (parts.length === 3) d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), 12, 0, 0);
+        else d = new Date(val);
+      } else {
+        d = new Date(isNaN(val) ? val : Number(val));
+      }
       return d.getTime() ? d.toISOString() : null;
     };
 
-    // Normalize order_uuids array
     let orderUuids = [];
     const rawUuids = s.orderUuids || s.order_uuids;
     if (Array.isArray(rawUuids)) {
@@ -138,7 +171,6 @@ export const importShipmentsCsvToSupabase = async (data: any[]) => {
       }
     }
 
-    // Normalize attachments array
     let attachments = [];
     const rawAttachments = s.attachments;
     if (Array.isArray(rawAttachments)) {

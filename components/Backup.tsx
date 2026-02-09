@@ -15,7 +15,6 @@ const Backup: React.FC = () => {
   const [exportingCloud, setExportingCloud] = useState(false);
   const [clearingCloud, setClearingCloud] = useState(false);
   const [clearingLocal, setClearingLocal] = useState(false);
-  const [showSql, setShowSql] = useState(false);
   
   const [cloudConfig, setCloudConfig] = useState({
     url: '',
@@ -73,6 +72,31 @@ const Backup: React.FC = () => {
     }
   };
 
+  // Helper to parse dd.mm.yyyy or standard date strings into Local Noon timestamp
+  const parseDateToNoonTimestamp = (val: any): number | null => {
+    if (!val) return null;
+    let d: Date;
+    
+    // Check if it's a string in dd.mm.yyyy format
+    if (typeof val === 'string' && val.includes('.')) {
+      const parts = val.split('.');
+      if (parts.length === 3) {
+        // Assume DD.MM.YYYY
+        d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), 12, 0, 0);
+      } else {
+        d = new Date(val);
+      }
+    } else {
+      d = new Date(isNaN(val) ? val : Number(val));
+    }
+
+    if (isNaN(d.getTime())) return null;
+    
+    // Always force to Noon local time to avoid timezone shifts
+    d.setHours(12, 0, 0, 0);
+    return d.getTime();
+  };
+
   const handleImportLocal = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -85,24 +109,46 @@ const Backup: React.FC = () => {
       for (const item of data) {
         const isShipment = !!(item.orderUuids || item.order_uuids || item.reference);
         const targetTable = isShipment ? db.shipments : db.orders;
+        
         if (!item.uuid) item.uuid = crypto.randomUUID();
         
-        // Normalize column names from CSV to logic fields
-        if (!item.orderDate && item.order_date) item.orderDate = item.order_date;
-        if (!item.orderDate && item.created_at) item.orderDate = item.created_at;
+        // Handle Order Date
+        const dateKey = item.orderDate !== undefined ? 'orderDate' : 
+                        (item.order_date !== undefined ? 'order_date' : 
+                        (item.Date !== undefined ? 'Date' : 'date'));
+        
+        const timestamp = parseDateToNoonTimestamp(item[dateKey]);
+        if (timestamp) {
+          item.orderDate = timestamp;
+          if (dateKey !== 'orderDate') delete item[dateKey];
+        }
 
-        if (typeof item.attachments === 'string') {
+        // Handle Invoice Date
+        if (item.invoiceDate || item.invoice_date) {
+          const invTs = parseDateToNoonTimestamp(item.invoiceDate || item.invoice_date);
+          if (invTs) item.invoiceDate = invTs;
+        }
+
+        // Handle Dispatch Date (for shipments)
+        if (item.dispatchDate || item.dispatch_date) {
+          const dispTs = parseDateToNoonTimestamp(item.dispatchDate || item.dispatch_date);
+          if (dispTs) item.dispatchDate = dispTs;
+        }
+
+        if (typeof item.attachments === 'string' && item.attachments.startsWith('[')) {
           try { item.attachments = JSON.parse(item.attachments); } catch { item.attachments = []; }
         }
+        
         if (isShipment && typeof (item.orderUuids || item.order_uuids) === 'string') {
            const raw = item.orderUuids || item.order_uuids;
            try { item.orderUuids = JSON.parse(raw); } catch { item.orderUuids = raw.split(';').map((u: string) => u.trim()); }
         }
+
         const existing = await targetTable.where('uuid').equals(item.uuid).first();
         if (existing) {
           await targetTable.update((existing as any).id!, { ...item, updatedAt: Date.now() });
         } else {
-          await targetTable.add({ ...item, createdAt: Date.now(), updatedAt: Date.now() } as any);
+          await targetTable.add({ ...item, createdAt: item.createdAt || Date.now(), updatedAt: Date.now() } as any);
         }
         count++;
       }
@@ -166,67 +212,6 @@ const Backup: React.FC = () => {
       setClearingLocal(false);
     }
   };
-
-  const supabaseSqlSchema = `-- 1. Orders Table
-CREATE TABLE public.orders (
-  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  uuid uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
-  order_no text,
-  order_date date NOT NULL DEFAULT CURRENT_DATE,
-  cust_code text,
-  customer text NOT NULL,
-  city text NOT NULL,
-  zip_code text,
-  material text NOT NULL,
-  qty numeric NOT NULL DEFAULT 0,
-  status text DEFAULT 'Pending',
-  note text,
-  attachments jsonb DEFAULT '[]'::jsonb,
-  invoice_no text,
-  invoice_date date,
-  vehicle_no text,
-  transporter text,
-  lr_no text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now()
-);
-
--- Indexes for Faster Search
-CREATE INDEX idx_orders_customer ON public.orders(customer);
-CREATE INDEX idx_orders_order_date ON public.orders(order_date);
-CREATE INDEX idx_orders_city ON public.orders(city);
-
--- 2. Shipments (Archive) Table
-CREATE TABLE public.shipments (
-  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  uuid uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
-  reference text NOT NULL,
-  order_uuids jsonb DEFAULT '[]'::jsonb,
-  attachments jsonb DEFAULT '[]'::jsonb,
-  dispatch_date timestamp with time zone DEFAULT now(),
-  note text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now()
-);
-
--- Index for Dispatch Date Filtering
-CREATE INDEX idx_shipments_dispatch_date ON public.shipments(dispatch_date);
-
--- 3. Master Data Tables (Note: Case-sensitive names)
-CREATE TABLE public."customersMaster" (
-  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  name text NOT NULL UNIQUE
-);
-
-CREATE TABLE public."citiesMaster" (
-  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  name text NOT NULL UNIQUE
-);
-
-CREATE TABLE public."materialsMaster" (
-  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  name text NOT NULL UNIQUE
-);`;
 
   return (
     <div className="max-w-5xl mx-auto space-y-12 animate-in fade-in duration-700 pb-24 px-4">
@@ -304,40 +289,6 @@ CREATE TABLE public."materialsMaster" (
            </div>
         </section>
       </div>
-
-      <section className="bg-gray-900 rounded-[3rem] p-8 md:p-12 shadow-2xl text-white">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-            <div>
-              <h3 className="text-2xl font-black uppercase tracking-tighter">Database Setup SQL</h3>
-              <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-1">Run this script in your Supabase SQL Editor</p>
-            </div>
-            <button 
-              onClick={() => setShowSql(!showSql)}
-              className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-black text-[10px] uppercase tracking-widest border border-white/10 transition-all"
-            >
-              {showSql ? 'Hide SQL Code' : 'Show SQL Code'}
-            </button>
-          </div>
-
-          {showSql && (
-            <div className="animate-in slide-in-from-top-4 duration-500">
-              <div className="bg-black/50 rounded-2xl p-6 border border-white/5 font-mono text-xs overflow-x-auto text-emerald-400 leading-relaxed shadow-inner">
-                <pre>{supabaseSqlSchema}</pre>
-              </div>
-              <div className="mt-6 flex justify-end">
-                <button 
-                  onClick={() => {
-                    navigator.clipboard.writeText(supabaseSqlSchema);
-                    alert("SQL Schema copied to clipboard!");
-                  }}
-                  className="px-8 py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-900/20 transition-all active:scale-95"
-                >
-                  Copy All to Clipboard
-                </button>
-              </div>
-            </div>
-          )}
-      </section>
     </div>
   );
 };

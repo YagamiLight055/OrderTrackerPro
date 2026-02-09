@@ -3,19 +3,43 @@
 // but we'll use window.Papa in our functions.
 declare const Papa: any;
 
+const formatDateToCustom = (timestamp: any): string => {
+  if (!timestamp) return '';
+  const d = new Date(isNaN(timestamp) ? timestamp : Number(timestamp));
+  if (isNaN(d.getTime())) return String(timestamp);
+  
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}.${month}.${year}`;
+};
+
 export const exportToCSV = (data: any[], filename: string) => {
   if (typeof Papa === 'undefined') {
     alert("CSV Library (PapaParse) is not available. Please check your internet connection.");
     return;
   }
 
-  // Pre-process: PapaParse unparse doesn't handle nested arrays/objects for CSV.
-  // We stringify the attachments array so it occupies a single CSV cell as valid JSON.
+  // Pre-process: Format dates to dd.mm.yyyy and stringify nested arrays
   const processedData = data.map(item => {
     const newItem = { ...item };
+    
+    // Format known date fields
+    const dateFields = ['orderDate', 'invoiceDate', 'dispatchDate', 'createdAt', 'updatedAt', 'order_date', 'invoice_date', 'dispatch_date', 'created_at', 'updated_at'];
+    dateFields.forEach(field => {
+      if (newItem[field]) {
+        newItem[field] = formatDateToCustom(newItem[field]);
+      }
+    });
+
     if (newItem.attachments && Array.isArray(newItem.attachments)) {
       newItem.attachments = JSON.stringify(newItem.attachments);
     }
+    if (newItem.orderUuids && Array.isArray(newItem.orderUuids)) {
+      newItem.orderUuids = JSON.stringify(newItem.orderUuids);
+    }
+    
+    // Remove internal IDs for cleaner backup if needed, but keeping for LWW
     return newItem;
   });
 
@@ -32,11 +56,10 @@ export const exportToCSV = (data: any[], filename: string) => {
     link.click();
     document.body.removeChild(link);
     
-    // Clean up to prevent memory leaks with large files
     setTimeout(() => URL.revokeObjectURL(url), 100);
   } catch (error) {
     console.error("Export error:", error);
-    alert("Error generating CSV. The data might be too large for the browser to process.");
+    alert("Error generating CSV.");
   }
 };
 

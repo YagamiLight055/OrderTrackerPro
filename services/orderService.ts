@@ -17,28 +17,33 @@ export const getOrders = async (mode: StorageMode): Promise<Order[]> => {
     
     if (error) throw error;
     
-    return (data || []).map(remote => ({
-      id: remote.id,
-      uuid: remote.uuid,
-      orderNo: remote.order_no,
-      orderDate: new Date(remote.order_date).getTime(),
-      custCode: remote.cust_code,
-      customer: remote.customer,
-      city: remote.city,
-      zipCode: remote.zip_code,
-      material: remote.material,
-      qty: remote.qty,
-      status: remote.status,
-      note: remote.note,
-      attachments: remote.attachments,
-      createdAt: new Date(remote.created_at).getTime(),
-      updatedAt: new Date(remote.updated_at).getTime(),
-      invoiceNo: remote.invoice_no,
-      invoiceDate: remote.invoice_date ? new Date(remote.invoice_date).getTime() : undefined,
-      vehicleNo: remote.vehicle_no,
-      transporter: remote.transporter,
-      lrNo: remote.lr_no
-    }));
+    return (data || []).map(remote => {
+      // remote.order_date is YYYY-MM-DD. We append T12:00:00 to force local noon interpretation.
+      const dateStr = remote.order_date.includes('T') ? remote.order_date : `${remote.order_date}T12:00:00`;
+      
+      return {
+        id: remote.id,
+        uuid: remote.uuid,
+        orderNo: remote.order_no,
+        orderDate: new Date(dateStr).getTime(),
+        custCode: remote.cust_code,
+        customer: remote.customer,
+        city: remote.city,
+        zipCode: remote.zip_code,
+        material: remote.material,
+        qty: remote.qty,
+        status: remote.status,
+        note: remote.note,
+        attachments: remote.attachments,
+        createdAt: new Date(remote.created_at).getTime(),
+        updatedAt: new Date(remote.updated_at).getTime(),
+        invoiceNo: remote.invoice_no,
+        invoiceDate: remote.invoice_date ? new Date(`${remote.invoice_date}T12:00:00`).getTime() : undefined,
+        vehicleNo: remote.vehicle_no,
+        transporter: remote.transporter,
+        lrNo: remote.lr_no
+      };
+    });
   }
 };
 
