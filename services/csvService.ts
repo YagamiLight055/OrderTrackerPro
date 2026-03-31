@@ -25,7 +25,12 @@ export const exportToCSV = (data: any[], filename: string) => {
     const newItem = { ...item };
     
     // Format known date fields
-    const dateFields = ['orderDate', 'invoiceDate', 'dispatchDate', 'createdAt', 'updatedAt', 'order_date', 'invoice_date', 'dispatch_date', 'created_at', 'updated_at'];
+    const dateFields = [
+      'SO DATE', 'INV DATE', 'DEL DATE', 'LR Date', 
+      'createdAt', 'updatedAt', 
+      'so_date', 'inv_date', 'del_date', 'lr_date', 
+      'created_at', 'updated_at'
+    ];
     dateFields.forEach(field => {
       if (newItem[field]) {
         newItem[field] = formatDateToCustom(newItem[field]);

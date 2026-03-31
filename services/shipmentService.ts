@@ -1,78 +1,42 @@
 
 import { db, Shipment } from '../db';
-import { initSupabase } from './syncService';
 import { StorageMode } from '../types';
+import { initSupabase } from './syncService';
 
 export const getShipments = async (mode: StorageMode): Promise<Shipment[]> => {
   if (mode === StorageMode.OFFLINE) {
-    return db.shipments.reverse().sortBy('dispatchDate');
+    return await db.shipments.toArray();
   } else {
     const supabase = initSupabase();
-    if (!supabase) throw new Error("Remote access not configured");
-    
+    if (!supabase) return [];
     const { data, error } = await supabase
       .from('shipments')
       .select('*')
-      .order('dispatch_date', { ascending: false });
-    
+      .order('dispatchDate', { ascending: false });
     if (error) throw error;
-    
-    return (data || []).map(remote => ({
-      id: remote.id,
-      uuid: remote.uuid,
-      reference: remote.reference,
-      orderUuids: remote.order_uuids || [],
-      attachments: remote.attachments || [],
-      dispatchDate: new Date(remote.dispatch_date).getTime(),
-      note: remote.note,
-      createdAt: new Date(remote.created_at).getTime(),
-      updatedAt: new Date(remote.updated_at).getTime()
-    }));
+    return data || [];
   }
 };
 
-export const saveShipment = async (mode: StorageMode, shipment: Shipment, editId?: number | null) => {
+export const saveShipment = async (mode: StorageMode, shipment: Shipment): Promise<void> => {
   if (mode === StorageMode.OFFLINE) {
-    if (editId) {
-      // Adding 'as any' to avoid Dexie's strict UpdateSpec type validation errors on objects with arrays
-      return await db.shipments.update(editId, shipment as any);
-    } else {
-      return await db.shipments.add(shipment);
-    }
+    await db.shipments.put(shipment);
   } else {
     const supabase = initSupabase();
-    if (!supabase) throw new Error("Remote access not configured");
-
-    const payload = {
-      uuid: shipment.uuid,
-      reference: shipment.reference,
-      order_uuids: shipment.orderUuids,
-      attachments: shipment.attachments,
-      dispatch_date: new Date(shipment.dispatchDate).toISOString(),
-      note: shipment.note,
-      updated_at: new Date().toISOString()
-    };
-
-    if (editId || shipment.uuid) {
-      const { error } = await supabase
-        .from('shipments')
-        .upsert({ ...payload, created_at: new Date(shipment.createdAt).toISOString() }, { onConflict: 'uuid' });
-      if (error) throw error;
-    } else {
-      const { error } = await supabase
-        .from('shipments')
-        .insert({ ...payload, created_at: new Date().toISOString() });
-      if (error) throw error;
-    }
+    if (!supabase) throw new Error("Supabase not initialized");
+    const { error } = await supabase
+      .from('shipments')
+      .upsert(shipment);
+    if (error) throw error;
   }
 };
 
-export const deleteShipment = async (mode: StorageMode, id: number, uuid: string) => {
+export const deleteShipment = async (mode: StorageMode, id: number, uuid: string): Promise<void> => {
   if (mode === StorageMode.OFFLINE) {
-    return await db.shipments.delete(id);
+    await db.shipments.delete(id);
   } else {
     const supabase = initSupabase();
-    if (!supabase) throw new Error("Remote access not configured");
+    if (!supabase) throw new Error("Supabase not initialized");
     const { error } = await supabase
       .from('shipments')
       .delete()

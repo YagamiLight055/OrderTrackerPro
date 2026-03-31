@@ -18,41 +18,68 @@ const STATUS_OPTIONS = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancel
 const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
   const [formData, setFormData] = useState<{
     uuid: string;
-    orderNo: string;
-    orderDate: string;
-    custCode: string;
-    customer: string;
-    city: string;
-    zipCode: string;
-    material: string;
-    qty: number;
+    "Plant": string;
+    "Invoice Number": string;
+    "INV DATE": string;
+    "SALES ORDER": string;
+    "SO DATE": string;
+    "CUSTOMER": string;
+    "MATERIAL": string;
+    "Material Description": string;
+    "ITEM QTY": number;
+    "DELIVERY": string;
+    "DEL DATE": string;
+    "DEL QTY": number;
+    "IND. SHIP. NUMBER": string;
+    "COL SHP NO": string;
+    "Ship To Party": string;
+    "Ship to Party Name": string;
+    "Ship to Party Destination": string;
+    "Payer": string;
+    "Value of Part ordered": number;
+    "Order type": string;
+    "GC L/R No": string;
+    "LR Date": string;
+    "Road Permit": string;
+    "Truck No": string;
     status: string;
     note: string;
     attachments: string[];
-    // Technical creation date hidden from form
-    invoiceNo: string;
-    invoiceDate: string;
-    vehicleNo: string;
-    transporter: string;
-    lrNo: string;
+    customerName: string;
+    customerCity: string;
+    reasonForRejection: string;
   }>({
     uuid: crypto.randomUUID(),
-    orderNo: '',
-    orderDate: new Date().toISOString().split('T')[0],
-    custCode: '',
-    customer: '',
-    city: '',
-    zipCode: '',
-    material: '',
-    qty: 0,
+    "Plant": '',
+    "Invoice Number": '',
+    "INV DATE": '',
+    "SALES ORDER": '',
+    "SO DATE": new Date().toISOString().split('T')[0],
+    "CUSTOMER": '',
+    "MATERIAL": '',
+    "Material Description": '',
+    "ITEM QTY": 0,
+    "DELIVERY": '',
+    "DEL DATE": '',
+    "DEL QTY": 0,
+    "IND. SHIP. NUMBER": '',
+    "COL SHP NO": '',
+    "Ship To Party": '',
+    "Ship to Party Name": '',
+    "Ship to Party Destination": '',
+    "Payer": '',
+    "Value of Part ordered": 0,
+    "Order type": '',
+    "GC L/R No": '',
+    "LR Date": '',
+    "Road Permit": '',
+    "Truck No": '',
     status: 'Pending',
     note: '',
     attachments: [],
-    invoiceNo: '',
-    invoiceDate: '',
-    vehicleNo: '',
-    transporter: '',
-    lrNo: ''
+    customerName: '',
+    customerCity: '',
+    reasonForRejection: ''
   });
 
   const [isProcessingImages, setIsProcessingImages] = useState(false);
@@ -76,16 +103,16 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
         const distinct = (arr: string[]) => Array.from(new Set(arr.filter(Boolean).map(s => s.trim()))).sort();
         
         setOptions({
-          customers: distinct([...orders.map(o => o.customer), ...masterCustomers.map(c => c.name)]),
-          cities: distinct([...orders.map(o => o.city), ...masterCities.map(c => c.name)]),
-          materials: distinct([...orders.map(o => o.material), ...masterMaterials.map(m => m.name)]),
+          customers: distinct([...orders.map(o => o.customerName), ...masterCustomers.map(c => c.name)]),
+          cities: distinct([...orders.map(o => o.customerCity), ...masterCities.map(c => c.name)]),
+          materials: distinct([...orders.map(o => o["MATERIAL"]), ...masterMaterials.map(m => m.name)]),
         });
       } else {
         const supabase = initSupabase();
         if (!supabase) return;
         
         const [ordersRes, customersRes, citiesRes, materialsRes] = await Promise.all([
-           supabase.from('orders').select('customer, city, material'),
+           supabase.from('orders').select('customer_name, customer_city, material'),
            supabase.from('customersMaster').select('name'),
            supabase.from('citiesMaster').select('name'),
            supabase.from('materialsMaster').select('name')
@@ -94,8 +121,8 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
         const distinct = (arr: string[]) => Array.from(new Set(arr.filter(Boolean).map(s => s.trim()))).sort();
 
         setOptions({
-          customers: distinct([...(ordersRes.data?.map(o => o.customer) || []), ...(customersRes.data?.map(c => c.name) || [])]),
-          cities: distinct([...(ordersRes.data?.map(o => o.city) || []), ...(citiesRes.data?.map(c => c.name) || [])]),
+          customers: distinct([...(ordersRes.data?.map(o => o.customer_name) || []), ...(customersRes.data?.map(c => c.name) || [])]),
+          cities: distinct([...(ordersRes.data?.map(o => o.customer_city) || []), ...(citiesRes.data?.map(c => c.name) || [])]),
           materials: distinct([...(ordersRes.data?.map(o => o.material) || []), ...(materialsRes.data?.map(m => m.name) || [])]),
         });
       }
@@ -108,22 +135,36 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
           if (order) {
             setFormData({
               uuid: order.uuid || crypto.randomUUID(), 
-              orderNo: order.orderNo || '',
-              orderDate: new Date(order.orderDate).toISOString().split('T')[0],
-              custCode: order.custCode || '',
-              customer: order.customer,
-              city: order.city,
-              zipCode: order.zipCode || '',
-              material: order.material,
-              qty: order.qty,
+              "Plant": order["Plant"] || '',
+              "Invoice Number": order["Invoice Number"] || '',
+              "INV DATE": order["INV DATE"] ? new Date(order["INV DATE"]).toISOString().split('T')[0] : '',
+              "SALES ORDER": order["SALES ORDER"] || '',
+              "SO DATE": new Date(order["SO DATE"]).toISOString().split('T')[0],
+              "CUSTOMER": order["CUSTOMER"] || '',
+              "MATERIAL": order["MATERIAL"] || '',
+              "Material Description": order["Material Description"] || '',
+              "ITEM QTY": order["ITEM QTY"] || 0,
+              "DELIVERY": order["DELIVERY"] || '',
+              "DEL DATE": order["DEL DATE"] ? new Date(order["DEL DATE"]).toISOString().split('T')[0] : '',
+              "DEL QTY": order["DEL QTY"] || 0,
+              "IND. SHIP. NUMBER": order["IND. SHIP. NUMBER"] || '',
+              "COL SHP NO": order["COL SHP NO"] || '',
+              "Ship To Party": order["Ship To Party"] || '',
+              "Ship to Party Name": order["Ship to Party Name"] || '',
+              "Ship to Party Destination": order["Ship to Party Destination"] || '',
+              "Payer": order["Payer"] || '',
+              "Value of Part ordered": order["Value of Part ordered"] || 0,
+              "Order type": order["Order type"] || '',
+              "GC L/R No": order["GC L/R No"] || '',
+              "LR Date": order["LR Date"] ? new Date(order["LR Date"]).toISOString().split('T')[0] : '',
+              "Road Permit": order["Road Permit"] || '',
+              "Truck No": order["Truck No"] || '',
               status: order.status || 'Pending',
               note: order.note || '',
               attachments: order.attachments || [],
-              invoiceNo: order.invoiceNo || '',
-              invoiceDate: order.invoiceDate ? new Date(order.invoiceDate).toISOString().split('T')[0] : '',
-              vehicleNo: order.vehicleNo || '',
-              transporter: order.transporter || '',
-              lrNo: order.lrNo || ''
+              customerName: order.customerName || '',
+              customerCity: order.customerCity || '',
+              reasonForRejection: order.reasonForRejection || ''
             });
           }
         });
@@ -134,22 +175,36 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
              if (data) {
                setFormData({
                  uuid: data.uuid,
-                 orderNo: data.order_no || '',
-                 orderDate: data.order_date || new Date(data.created_at).toISOString().split('T')[0],
-                 custCode: data.cust_code || '',
-                 customer: data.customer,
-                 city: data.city,
-                 zipCode: data.zip_code || '',
-                 material: data.material,
-                 qty: data.qty,
+                 "Plant": data.plant || '',
+                 "Invoice Number": data.invoice_number || '',
+                 "INV DATE": data.inv_date || '',
+                 "SALES ORDER": data.sales_order || '',
+                 "SO DATE": data.so_date || '',
+                 "CUSTOMER": data.customer || '',
+                 "MATERIAL": data.material || '',
+                 "Material Description": data.material_description || '',
+                 "ITEM QTY": data.item_qty || 0,
+                 "DELIVERY": data.delivery || '',
+                 "DEL DATE": data.del_date || '',
+                 "DEL QTY": data.del_qty || 0,
+                 "IND. SHIP. NUMBER": data.ind_ship_number || '',
+                 "COL SHP NO": data.col_shp_no || '',
+                 "Ship To Party": data.ship_to_party || '',
+                 "Ship to Party Name": data.ship_to_party_name || '',
+                 "Ship to Party Destination": data.ship_to_party_destination || '',
+                 "Payer": data.payer || '',
+                 "Value of Part ordered": data.value_part_ordered || 0,
+                 "Order type": data.order_type || '',
+                 "GC L/R No": data.gc_lr_no || '',
+                 "LR Date": data.lr_date || '',
+                 "Road Permit": data.road_permit || '',
+                 "Truck No": data.truck_no || '',
                  status: data.status,
                  note: data.note,
                  attachments: data.attachments || [],
-                 invoiceNo: data.invoice_no || '',
-                 invoiceDate: data.invoice_date ? new Date(data.invoice_date).toISOString().split('T')[0] : '',
-                 vehicleNo: data.vehicle_no || '',
-                 transporter: data.transporter || '',
-                 lrNo: data.lr_no || ''
+                 customerName: data.customer_name || '',
+                 customerCity: data.customer_city || '',
+                 reasonForRejection: data.reason_for_rejection || ''
                });
              }
            });
@@ -217,40 +272,52 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
     if (isSaving) return;
 
     const { 
-      uuid, orderNo, orderDate, custCode, customer, city, zipCode, material, qty, status, note, attachments,
-      invoiceNo, invoiceDate, vehicleNo, transporter, lrNo
+      uuid, status, note, attachments, customerName, customerCity
     } = formData;
     
-    if (!customer.trim() || !city.trim() || !material.trim() || qty <= 0 || !orderDate) {
-      alert("Please fill all required fields.");
+    if (!formData["SALES ORDER"].trim() || !formData["SO DATE"] || !customerName.trim() || formData["ITEM QTY"] <= 0) {
+      alert("Please fill all required fields (Sales Order, SO Date, Customer Name, Item Qty).");
       return;
     }
 
     setIsSaving(true);
     const now = Date.now();
-    const finalOrderDate = new Date(`${orderDate}T12:00:00`).getTime();
-    const finalInvoiceDate = invoiceDate ? new Date(`${invoiceDate}T12:00:00`).getTime() : undefined;
+    const parseDate = (d: string) => d ? new Date(`${d}T12:00:00`).getTime() : undefined;
 
     const orderData: Order = {
       uuid: uuid || crypto.randomUUID(),
-      orderNo: orderNo.trim(),
-      orderDate: finalOrderDate,
-      custCode: custCode.trim(),
-      customer: customer.trim(),
-      city: city.trim(),
-      zipCode: zipCode.trim(),
-      material: material.trim(),
-      qty: Number(qty),
+      "Plant": formData["Plant"].trim(),
+      "Invoice Number": formData["Invoice Number"].trim(),
+      "INV DATE": parseDate(formData["INV DATE"]),
+      "SALES ORDER": formData["SALES ORDER"].trim(),
+      "SO DATE": parseDate(formData["SO DATE"]) || now,
+      "CUSTOMER": formData["CUSTOMER"].trim(),
+      "MATERIAL": formData["MATERIAL"].trim(),
+      "Material Description": formData["Material Description"].trim(),
+      "ITEM QTY": Number(formData["ITEM QTY"]),
+      "DELIVERY": formData["DELIVERY"].trim(),
+      "DEL DATE": parseDate(formData["DEL DATE"]),
+      "DEL QTY": Number(formData["DEL QTY"]),
+      "IND. SHIP. NUMBER": formData["IND. SHIP. NUMBER"].trim(),
+      "COL SHP NO": formData["COL SHP NO"].trim(),
+      "Ship To Party": formData["Ship To Party"].trim(),
+      "Ship to Party Name": formData["Ship to Party Name"].trim(),
+      "Ship to Party Destination": formData["Ship to Party Destination"].trim(),
+      "Payer": formData["Payer"].trim(),
+      "Value of Part ordered": Number(formData["Value of Part ordered"]),
+      "Order type": formData["Order type"].trim(),
+      "GC L/R No": formData["GC L/R No"].trim(),
+      "LR Date": parseDate(formData["LR Date"]),
+      "Road Permit": formData["Road Permit"].trim(),
+      "Truck No": formData["Truck No"].trim(),
       status: status,
       note: note.trim(),
       attachments,
+      customerName: customerName.trim(),
+      customerCity: customerCity.trim(),
+      reasonForRejection: formData.reasonForRejection.trim(),
       createdAt: editId ? (await db.orders.get(editId))?.createdAt || now : now,
       updatedAt: now,
-      invoiceNo: invoiceNo.trim(),
-      invoiceDate: finalInvoiceDate,
-      vehicleNo: vehicleNo.trim(),
-      transporter: transporter.trim(),
-      lrNo: lrNo.trim()
     };
 
     try {
@@ -265,195 +332,225 @@ const AddOrder: React.FC<Props> = ({ mode, editId, onSuccess, onCancel }) => {
   };
 
   return (
-    <div className="max-w-xl mx-auto">
+    <div className="max-w-4xl mx-auto">
       <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 border border-gray-100">
         <header className="mb-8 flex justify-between items-start">
           <div>
             <h2 className="text-3xl font-black text-gray-900 leading-tight uppercase tracking-tighter">
-              {editId ? 'Edit Order' : 'Add Order'}
+              {editId ? 'Edit Record' : 'Add New Record'}
             </h2>
             <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-1">Environment: {mode === StorageMode.ONLINE ? 'Cloud Live' : 'Standalone Local'}</p>
           </div>
           <div className={`w-3.5 h-3.5 rounded-full ${mode === StorageMode.ONLINE ? 'bg-blue-600 animate-pulse shadow-[0_0_12px_rgba(37,99,235,0.4)]' : 'bg-indigo-50 shadow-[0_0_12px_rgba(79,70,229,0.3)]'}`}></div>
         </header>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Order No.</label>
-              <input
-                type="text"
-                value={formData.orderNo}
-                onChange={(e) => setFormData({ ...formData, orderNo: e.target.value })}
-                className="w-full px-5 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold"
-                placeholder="Ex: ORD-5502"
-              />
+        <form onSubmit={handleSubmit} className="space-y-8">
+          {/* Section 1: Order Basics */}
+          <div className="space-y-6">
+            <h3 className="text-sm font-black text-indigo-600 uppercase tracking-widest border-b pb-2">Order Information</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Plant</label>
+                <input type="text" value={formData["Plant"]} onChange={e => setFormData({...formData, "Plant": e.target.value})} className="w-full px-5 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold" placeholder="Plant Code" />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Sales Order *</label>
+                <input type="text" value={formData["SALES ORDER"]} onChange={e => setFormData({...formData, "SALES ORDER": e.target.value})} className="w-full px-5 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold" placeholder="SO Number" required />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">SO Date *</label>
+                <input type="date" value={formData["SO DATE"]} onChange={e => setFormData({...formData, "SO DATE": e.target.value})} className="w-full px-5 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold" required />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Order Date</label>
-              <input
-                type="date"
-                value={formData.orderDate}
-                onChange={(e) => setFormData({ ...formData, orderDate: e.target.value })}
-                className="w-full px-5 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold outline-none"
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Order Type</label>
+                <input type="text" value={formData["Order type"]} onChange={e => setFormData({...formData, "Order type": e.target.value})} className="w-full px-5 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold" />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Payer</label>
+                <input type="text" value={formData["Payer"]} onChange={e => setFormData({...formData, "Payer": e.target.value})} className="w-full px-5 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold" />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Value ordered</label>
+                <input type="number" value={formData["Value of Part ordered"] || ''} onChange={e => setFormData({...formData, "Value of Part ordered": Number(e.target.value)})} className="w-full px-5 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold" />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Customer Info */}
+          <div className="space-y-6">
+            <h3 className="text-sm font-black text-indigo-600 uppercase tracking-widest border-b pb-2">Customer Details</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Customer ID</label>
+                <input type="text" value={formData["CUSTOMER"]} onChange={e => setFormData({...formData, "CUSTOMER": e.target.value})} className="w-full px-5 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold" placeholder="Cust Code" />
+              </div>
+              <div className="sm:col-span-2">
+                <AutocompleteInput
+                  label="Customer Name *"
+                  value={formData.customerName}
+                  onChange={(val) => setFormData({ ...formData, customerName: val })}
+                  options={options.customers}
+                  placeholder="Full customer name..."
+                  required
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <AutocompleteInput
+                label="Customer City"
+                value={formData.customerCity}
+                onChange={(val) => setFormData({ ...formData, customerCity: val })}
+                options={options.cities}
+                placeholder="City..."
+              />
+              <div>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Status</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className="w-full px-5 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold cursor-pointer"
+                >
+                  {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Material Info */}
+          <div className="space-y-6">
+            <h3 className="text-sm font-black text-indigo-600 uppercase tracking-widest border-b pb-2">Material Details</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <AutocompleteInput
+                label="Material *"
+                value={formData["MATERIAL"]}
+                onChange={(val) => setFormData({ ...formData, "MATERIAL": val })}
+                options={options.materials}
+                placeholder="Material code..."
                 required
               />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-6">
-            <AutocompleteInput
-              label="Customer Name"
-              value={formData.customer}
-              onChange={(val) => setFormData({ ...formData, customer: val })}
-              options={options.customers}
-              placeholder="Search or enter client..."
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Cust Code</label>
-              <input
-                type="text"
-                value={formData.custCode}
-                onChange={(e) => setFormData({ ...formData, custCode: e.target.value })}
-                className="w-full px-5 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold"
-                placeholder="Ex: C-101"
-              />
+              <div>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Item Qty *</label>
+                <input type="number" value={formData["ITEM QTY"] || ''} onChange={e => setFormData({...formData, "ITEM QTY": Number(e.target.value)})} className="w-full px-5 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-black text-lg" required min="1" />
+              </div>
             </div>
             <div>
-              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Zip Code</label>
-              <input
-                type="text"
-                value={formData.zipCode}
-                onChange={(e) => setFormData({ ...formData, zipCode: e.target.value })}
-                className="w-full px-5 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold"
-                placeholder="Ex: 400001"
-              />
+              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Material Description</label>
+              <input type="text" value={formData["Material Description"]} onChange={e => setFormData({...formData, "Material Description": e.target.value})} className="w-full px-5 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold" placeholder="Description..." />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <AutocompleteInput
-              label="Destination City"
-              value={formData.city}
-              onChange={(val) => setFormData({ ...formData, city: val })}
-              options={options.cities}
-              placeholder="Select city..."
-              required
-            />
-            <AutocompleteInput
-              label="Material"
-              value={formData.material}
-              onChange={(val) => setFormData({ ...formData, material: val })}
-              options={options.materials}
-              placeholder="Search material..."
-              required
-            />
+          {/* Section 4: Shipping Info */}
+          <div className="space-y-6 p-6 bg-blue-50/30 rounded-[2rem] border border-blue-100">
+            <h3 className="text-sm font-black text-blue-600 uppercase tracking-widest border-b border-blue-100 pb-2">Shipping & Dispatch</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-xs font-black text-gray-400 mb-2 uppercase tracking-widest">Invoice Number</label>
+                <input type="text" value={formData["Invoice Number"]} onChange={e => setFormData({...formData, "Invoice Number": e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold" />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-gray-400 mb-2 uppercase tracking-widest">INV DATE</label>
+                <input type="date" value={formData["INV DATE"]} onChange={e => setFormData({...formData, "INV DATE": e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold" />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-gray-400 mb-2 uppercase tracking-widest">Truck No</label>
+                <input type="text" value={formData["Truck No"]} onChange={e => setFormData({...formData, "Truck No": e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-xs font-black text-gray-400 mb-2 uppercase tracking-widest">GC L/R No</label>
+                <input type="text" value={formData["GC L/R No"]} onChange={e => setFormData({...formData, "GC L/R No": e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold" />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-gray-400 mb-2 uppercase tracking-widest">LR Date</label>
+                <input type="date" value={formData["LR Date"]} onChange={e => setFormData({...formData, "LR Date": e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold" />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-gray-400 mb-2 uppercase tracking-widest">Road Permit</label>
+                <input type="text" value={formData["Road Permit"]} onChange={e => setFormData({...formData, "Road Permit": e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-xs font-black text-gray-400 mb-2 uppercase tracking-widest">Delivery</label>
+                <input type="text" value={formData["DELIVERY"]} onChange={e => setFormData({...formData, "DELIVERY": e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold" />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-gray-400 mb-2 uppercase tracking-widest">DEL DATE</label>
+                <input type="date" value={formData["DEL DATE"]} onChange={e => setFormData({...formData, "DEL DATE": e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold" />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-gray-400 mb-2 uppercase tracking-widest">DEL QTY</label>
+                <input type="number" value={formData["DEL QTY"] || ''} onChange={e => setFormData({...formData, "DEL QTY": Number(e.target.value)})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-black text-gray-400 mb-2 uppercase tracking-widest">IND. SHIP. NUMBER</label>
+                <input type="text" value={formData["IND. SHIP. NUMBER"]} onChange={e => setFormData({...formData, "IND. SHIP. NUMBER": e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold" />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-gray-400 mb-2 uppercase tracking-widest">COL SHP NO</label>
+                <input type="text" value={formData["COL SHP NO"]} onChange={e => setFormData({...formData, "COL SHP NO": e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold" />
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          {/* Section 5: Ship To Info */}
+          <div className="space-y-6">
+            <h3 className="text-sm font-black text-indigo-600 uppercase tracking-widest border-b pb-2">Ship To Party</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Ship To Party</label>
+                <input type="text" value={formData["Ship To Party"]} onChange={e => setFormData({...formData, "Ship To Party": e.target.value})} className="w-full px-5 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Ship to Party Name</label>
+                <input type="text" value={formData["Ship to Party Name"]} onChange={e => setFormData({...formData, "Ship to Party Name": e.target.value})} className="w-full px-5 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold" />
+              </div>
+            </div>
             <div>
-              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Quantity</label>
-              <input
-                type="number"
-                value={formData.qty || ''}
-                onChange={(e) => setFormData({ ...formData, qty: Number(e.target.value) })}
-                className="w-full px-5 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-black text-lg"
-                required
-                min="1"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Order Status</label>
-              <select
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="w-full px-5 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold cursor-pointer"
-              >
-                {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-              </select>
+              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Ship to Destination</label>
+              <input type="text" value={formData["Ship to Party Destination"]} onChange={e => setFormData({...formData, "Ship to Party Destination": e.target.value})} className="w-full px-5 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold" />
             </div>
           </div>
 
-          {/* Logistics Section */}
-          <div className="p-6 bg-blue-50/40 rounded-[2rem] border border-blue-100 space-y-4">
-             <h3 className="text-xs font-black text-blue-600 uppercase tracking-[0.2em] mb-4">Logistics & Shipping</h3>
-             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                   <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Invoice Number</label>
-                   <input type="text" value={formData.invoiceNo} onChange={e => setFormData({...formData, invoiceNo: e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold text-sm" placeholder="INV-001" />
-                </div>
-                <div>
-                   <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Invoice Date</label>
-                   <input type="date" value={formData.invoiceDate} onChange={e => setFormData({...formData, invoiceDate: e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold text-sm" />
-                </div>
-                <div>
-                   <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Vehicle Number</label>
-                   <input type="text" value={formData.vehicleNo} onChange={e => setFormData({...formData, vehicleNo: e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold text-sm" placeholder="MH-01-AB-1234" />
-                </div>
-                <div>
-                   <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Transporter</label>
-                   <input type="text" value={formData.transporter} onChange={e => setFormData({...formData, transporter: e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold text-sm" placeholder="Blue Dart" />
-                </div>
-                <div className="sm:col-span-2">
-                   <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">LR / Reference Number</label>
-                   <input type="text" value={formData.lrNo} onChange={e => setFormData({...formData, lrNo: e.target.value})} className="w-full px-4 py-2.5 bg-white border-none rounded-xl shadow-sm font-bold text-sm" placeholder="LR-88991122" />
-                </div>
-             </div>
+          {/* Section 6: Rejection & Notes */}
+          <div className="space-y-6">
+            <h3 className="text-sm font-black text-red-600 uppercase tracking-widest border-b pb-2">Rejection & Notes</h3>
+            <div>
+              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Reason for rejection</label>
+              <input type="text" value={formData.reasonForRejection} onChange={e => setFormData({...formData, reasonForRejection: e.target.value})} className="w-full px-5 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-red-500 shadow-inner font-bold" />
+            </div>
+            <div>
+              <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Operational Notes</label>
+              <textarea value={formData.note} onChange={(e) => setFormData({ ...formData, note: e.target.value })} className="w-full px-5 py-4 bg-gray-50 border-none rounded-[1.5rem] focus:ring-2 focus:ring-indigo-500 shadow-inner min-h-[100px] font-medium" placeholder="Internal memo..." />
+            </div>
           </div>
 
           <div>
             <label className="block text-xs font-black text-gray-500 mb-3 uppercase tracking-widest">Attachments</label>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
               {formData.attachments.map((src, idx) => (
                 <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-white shadow-md group">
-                  <img src={src} className="w-full h-full object-cover" alt="attachment" />
-                  <button 
-                    type="button"
-                    onClick={() => setFormData(p => ({ ...p, attachments: p.attachments.filter((_, i) => i !== idx) }))}
-                    className="absolute top-1.5 right-1.5 bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                  >
+                  <img src={src} className="w-full h-full object-cover" alt="attachment" referrerPolicy="no-referrer" />
+                  <button type="button" onClick={() => setFormData(p => ({ ...p, attachments: p.attachments.filter((_, i) => i !== idx) }))} className="absolute top-1.5 right-1.5 bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
                 </div>
               ))}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isProcessingImages}
-                className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 text-gray-400 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-500 flex flex-col items-center justify-center disabled:opacity-50 transition-all shadow-inner"
-              >
-                {isProcessingImages ? (
-                   <div className="w-6 h-6 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                   <>
-                    <svg className="w-8 h-8 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 4v16m8-8H4" strokeWidth={2.5} /></svg>
-                    <span className="text-[8px] font-black uppercase">Attach</span>
-                   </>
-                )}
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isProcessingImages} className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 text-gray-400 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-500 flex flex-col items-center justify-center disabled:opacity-50 transition-all shadow-inner">
+                {isProcessingImages ? <div className="w-6 h-6 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div> : <><svg className="w-8 h-8 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 4v16m8-8H4" strokeWidth={2.5} /></svg><span className="text-[8px] font-black uppercase">Attach</span></>}
               </button>
             </div>
             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" multiple />
           </div>
-          <div>
-             <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Operational Notes</label>
-             <textarea
-                value={formData.note}
-                onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-                className="w-full px-5 py-4 bg-gray-50 border-none rounded-[1.5rem] focus:ring-2 focus:ring-indigo-500 shadow-inner min-h-[100px] font-medium"
-                placeholder="Internal memo..."
-              />
-          </div>
+
           <div className="flex gap-4 pt-4">
-            <button 
-              type="submit" 
-              disabled={isSaving}
-              className={`flex-[2] text-white font-black py-5 rounded-2xl shadow-2xl transition-all active:scale-95 disabled:opacity-50 uppercase tracking-widest text-sm ${mode === StorageMode.ONLINE ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'}`}
-            >
-              {isSaving ? 'Processing...' : (editId ? 'Commit Changes' : 'Save Order')}
+            <button type="submit" disabled={isSaving} className={`flex-[2] text-white font-black py-5 rounded-2xl shadow-2xl transition-all active:scale-95 disabled:opacity-50 uppercase tracking-widest text-sm ${mode === StorageMode.ONLINE ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'}`}>
+              {isSaving ? 'Processing...' : (editId ? 'Commit Changes' : 'Save Record')}
             </button>
             <button type="button" onClick={onCancel} className="flex-1 bg-gray-100 text-gray-500 font-black py-5 rounded-2xl hover:bg-gray-200 transition-colors uppercase tracking-widest text-xs">Cancel</button>
           </div>

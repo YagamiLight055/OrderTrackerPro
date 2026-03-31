@@ -4,9 +4,9 @@ import { AppTab, StorageMode } from './types';
 import AddOrder from './components/AddOrder';
 import OrdersList from './components/OrdersList';
 import Summary from './components/Summary';
+import Archive from './components/Archive';
 import Backup from './components/Backup';
 import MasterData from './components/MasterData';
-import Archive from './components/Archive';
 import { getSyncConfig } from './services/syncService';
 
 const App: React.FC = () => {

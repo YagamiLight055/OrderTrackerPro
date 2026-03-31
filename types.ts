@@ -3,9 +3,9 @@ export enum AppTab {
   ADD_ORDER = 'ADD_ORDER',
   ORDERS_LIST = 'ORDERS_LIST',
   SUMMARY = 'SUMMARY',
+  ARCHIVE = 'ARCHIVE',
   MASTER_DATA = 'MASTER_DATA',
-  BACKUP = 'BACKUP',
-  ARCHIVE = 'ARCHIVE'
+  BACKUP = 'BACKUP'
 }
 
 export enum StorageMode {

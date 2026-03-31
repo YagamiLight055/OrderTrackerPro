@@ -1,9 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { db, Order, Shipment } from '../db';
+import { db, Order } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { StorageMode } from '../types';
 import { getOrders, deleteOrder } from '../services/orderService';
-import { getShipments } from '../services/shipmentService';
 import { initSupabase } from '../services/syncService';
 
 interface Props {
@@ -35,26 +34,21 @@ const OrdersList: React.FC<Props> = ({ mode, onEdit }) => {
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   
   const [onlineOrders, setOnlineOrders] = useState<Order[]>([]);
-  const [onlineShipments, setOnlineShipments] = useState<Shipment[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRealtimeActive, setIsRealtimeActive] = useState(false);
   const [galleryState, setGalleryState] = useState<{ images: string[], index: number } | null>(null);
 
-  const localOrders = useLiveQuery(() => 
-    db.orders.reverse().sortBy('orderDate')
-  );
-  const localShipments = useLiveQuery(() => db.shipments.toArray());
+  const localOrders = useLiveQuery(async () => {
+    const all = await db.orders.toArray();
+    return all.sort((a, b) => (b["SO DATE"] || 0) - (a["SO DATE"] || 0));
+  });
 
   const fetchOnline = async () => {
     if (mode !== StorageMode.ONLINE) return;
     setIsLoading(true);
     try {
-      const [ordersData, shipmentsData] = await Promise.all([
-        getOrders(StorageMode.ONLINE),
-        getShipments(StorageMode.ONLINE)
-      ]);
+      const ordersData = await getOrders(StorageMode.ONLINE);
       setOnlineOrders(ordersData);
-      setOnlineShipments(shipmentsData);
     } catch (err) {
       console.error("Fetch Online Error:", err);
     } finally {
@@ -69,9 +63,8 @@ const OrdersList: React.FC<Props> = ({ mode, onEdit }) => {
       if (!supabase) return;
 
       const channel = supabase
-        .channel('public:orders_list_realtime_final_v100')
+        .channel('public:orders_list_realtime_final_v101')
         .on('postgres_changes' as any, { event: '*', table: 'orders', schema: 'public' }, () => fetchOnline())
-        .on('postgres_changes' as any, { event: '*', table: 'shipments', schema: 'public' }, () => fetchOnline())
         .subscribe((status) => {
           setIsRealtimeActive(status === 'SUBSCRIBED');
         });
@@ -82,49 +75,34 @@ const OrdersList: React.FC<Props> = ({ mode, onEdit }) => {
       };
     } else {
       setOnlineOrders([]);
-      setOnlineShipments([]);
       setIsRealtimeActive(false);
     }
   }, [mode]);
 
   const activeOrders = mode === StorageMode.OFFLINE ? (localOrders || []) : onlineOrders;
-  const activeShipments = mode === StorageMode.OFFLINE ? (localShipments || []) : onlineShipments;
 
-  const bundledOrderUuids = useMemo(() => {
-    const uuids = new Set<string>();
-    activeShipments.forEach(s => {
-      if (s.orderUuids && Array.isArray(s.orderUuids)) {
-        s.orderUuids.forEach(u => uuids.add(u));
-      }
-    });
-    return uuids;
-  }, [activeShipments]);
-
-  const availableOrders = useMemo(() => {
-    return activeOrders.filter(o => !bundledOrderUuids.has(o.uuid));
-  }, [activeOrders, bundledOrderUuids]);
-
-  const cities = useMemo(() => Array.from(new Set(availableOrders.map(o => (o.city || '').trim()))).sort() as string[], [availableOrders]);
-  const customers = useMemo(() => Array.from(new Set(availableOrders.map(o => (o.customer || '').trim()))).sort() as string[], [availableOrders]);
-  const materials = useMemo(() => Array.from(new Set(availableOrders.map(o => (o.material || '').trim()))).sort() as string[], [availableOrders]);
+  const cities = useMemo(() => Array.from(new Set(activeOrders.map(o => (o.customerCity || '').trim()))).sort() as string[], [activeOrders]);
+  const customers = useMemo(() => Array.from(new Set(activeOrders.map(o => (o.customerName || '').trim()))).sort() as string[], [activeOrders]);
+  const materials = useMemo(() => Array.from(new Set(activeOrders.map(o => (o["MATERIAL"] || '').trim()))).sort() as string[], [activeOrders]);
 
   const filteredOrders = useMemo(() => {
-    return availableOrders.filter(o => {
+    return activeOrders.filter(o => {
       const searchStr = searchTerm.toLowerCase().trim();
       const matchesSearch = !searchStr || 
-        o.customer.toLowerCase().includes(searchStr) ||
-        o.city.toLowerCase().includes(searchStr) ||
-        o.material.toLowerCase().includes(searchStr) ||
-        (o.lrNo && o.lrNo.toLowerCase().includes(searchStr)) ||
-        (o.vehicleNo && o.vehicleNo.toLowerCase().includes(searchStr)) ||
-        (o.orderNo && o.orderNo.toLowerCase().includes(searchStr));
+        o.customerName.toLowerCase().includes(searchStr) ||
+        o.customerCity.toLowerCase().includes(searchStr) ||
+        o["MATERIAL"].toLowerCase().includes(searchStr) ||
+        (o["GC L/R No"] && o["GC L/R No"].toLowerCase().includes(searchStr)) ||
+        (o["Truck No"] && o["Truck No"].toLowerCase().includes(searchStr)) ||
+        (o["SALES ORDER"] && o["SALES ORDER"].toLowerCase().includes(searchStr)) ||
+        (o["Invoice Number"] && o["Invoice Number"].toLowerCase().includes(searchStr));
       
-      const matchesCity = !filterCity || o.city.trim() === filterCity;
-      const matchesCustomer = !filterCustomer || o.customer.trim() === filterCustomer;
-      const matchesMaterial = !filterMaterial || o.material.trim() === filterMaterial;
+      const matchesCity = !filterCity || o.customerCity.trim() === filterCity;
+      const matchesCustomer = !filterCustomer || o.customerName.trim() === filterCustomer;
+      const matchesMaterial = !filterMaterial || o["MATERIAL"].trim() === filterMaterial;
       const matchesStatus = !filterStatus || o.status === filterStatus;
       
-      const orderDate = new Date(o.orderDate).setHours(0,0,0,0);
+      const orderDate = new Date(o["SO DATE"]).setHours(0,0,0,0);
       const start = startDate ? new Date(startDate).setHours(0,0,0,0) : null;
       const end = endDate ? new Date(endDate).setHours(23,59,59,999) : null;
 
@@ -133,12 +111,12 @@ const OrdersList: React.FC<Props> = ({ mode, onEdit }) => {
 
       return matchesSearch && matchesCity && matchesCustomer && matchesMaterial && matchesStatus && matchesStart && matchesEnd;
     });
-  }, [availableOrders, searchTerm, filterCity, filterCustomer, filterMaterial, filterStatus, startDate, endDate]);
+  }, [activeOrders, searchTerm, filterCity, filterCustomer, filterMaterial, filterStatus, startDate, endDate]);
 
   const hasActiveFilters = filterCity || filterCustomer || filterMaterial || filterStatus || startDate || endDate;
 
   const handleDelete = async (order: Order) => {
-    if (confirm(`Delete record for ${order.customer}?`)) {
+    if (confirm(`Delete record for ${order.customerName}?`)) {
       try {
         await deleteOrder(mode, order.id!, order.uuid);
         if (mode === StorageMode.ONLINE) fetchOnline(); 
@@ -167,7 +145,7 @@ const OrdersList: React.FC<Props> = ({ mode, onEdit }) => {
             </span>
             <input
               type="text"
-              placeholder={`Search by Customer, LR, Order No or Vehicle...`}
+              placeholder={`Search by Customer, LR, SO or Truck...`}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 shadow-inner font-bold text-gray-900"
@@ -252,45 +230,45 @@ const OrdersList: React.FC<Props> = ({ mode, onEdit }) => {
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <span className="text-[9px] font-black uppercase tracking-widest bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full">
-                      {order.city}
+                      {order.customerCity}
                     </span>
                     <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ${getStatusColor(order.status)}`}>
                       {order.status}
                     </span>
-                    {order.orderNo && (
+                    {order["SALES ORDER"] && (
                       <span className="text-[9px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full border border-emerald-100 shadow-sm">
-                        Order: {order.orderNo}
+                        SO: {order["SALES ORDER"]}
                       </span>
                     )}
-                    {order.lrNo && (
+                    {order["GC L/R No"] && (
                       <span className="text-[9px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full border border-blue-100">
-                        LR: {order.lrNo}
+                        LR: {order["GC L/R No"]}
                       </span>
                     )}
                   </div>
-                  <h3 className="text-2xl font-black text-gray-900 leading-none group-hover:text-indigo-600 transition-colors">{order.customer}</h3>
+                  <h3 className="text-2xl font-black text-gray-900 leading-none group-hover:text-indigo-600 transition-colors">{order.customerName}</h3>
                 </div>
                 <div className={`${mode === StorageMode.ONLINE ? 'bg-blue-600 shadow-blue-100' : 'bg-indigo-600 shadow-indigo-100'} rounded-2xl p-4 min-w-[70px] text-center shadow-lg transform group-hover:scale-110 transition-transform duration-500`}>
                   <span className="block text-[10px] opacity-70 text-white font-black uppercase tracking-tighter">Qty</span>
-                  <span className="block text-2xl font-black text-white leading-none mt-1">{order.qty}</span>
+                  <span className="block text-2xl font-black text-white leading-none mt-1">{order["ITEM QTY"]}</span>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-5">
                  <div className="col-span-2">
                     <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1.5 ml-1">Material Details</span>
-                    <p className="text-sm font-bold text-gray-700 bg-gray-50 border border-gray-100 px-4 py-2.5 rounded-2xl">{order.material}</p>
+                    <p className="text-sm font-bold text-gray-700 bg-gray-50 border border-gray-100 px-4 py-2.5 rounded-2xl">{order["MATERIAL"]}</p>
                  </div>
-                 {order.vehicleNo && (
+                 {order["Truck No"] && (
                    <div>
-                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1.5 ml-1">Vehicle</span>
-                      <p className="text-xs font-black text-indigo-600 truncate">{order.vehicleNo}</p>
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1.5 ml-1">Truck</span>
+                      <p className="text-xs font-black text-indigo-600 truncate">{order["Truck No"]}</p>
                    </div>
                  )}
-                 {order.invoiceNo && (
+                 {order["Invoice Number"] && (
                    <div>
                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1.5 ml-1">Invoice</span>
-                      <p className="text-xs font-black text-blue-600 truncate">{order.invoiceNo}</p>
+                      <p className="text-xs font-black text-blue-600 truncate">{order["Invoice Number"]}</p>
                    </div>
                  )}
               </div>
@@ -326,7 +304,7 @@ const OrdersList: React.FC<Props> = ({ mode, onEdit }) => {
               <div className="mt-auto pt-4 border-t border-gray-50 flex items-center justify-between">
                 <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest flex items-center gap-2">
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                  {new Date(order.orderDate).toLocaleDateString()}
+                  {new Date(order["SO DATE"]).toLocaleDateString()}
                 </span>
                 <div className="flex gap-2">
                   <button onClick={() => onEdit(order.id!)} className="p-3 bg-gray-50 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all shadow-sm hover:shadow-indigo-100">

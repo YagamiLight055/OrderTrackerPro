@@ -73,12 +73,12 @@ const Summary: React.FC<Props> = ({ mode }) => {
 
   const filteredOrders = useMemo(() => {
     return activeOrders.filter(o => {
-      const cityMatch = !filterCity || o.city.trim() === filterCity;
-      const customerMatch = !filterCustomer || o.customer.trim() === filterCustomer;
-      const materialMatch = !filterMaterial || o.material.trim() === filterMaterial;
+      const cityMatch = !filterCity || (o.customerCity || '').trim() === filterCity;
+      const customerMatch = !filterCustomer || (o.customerName || '').trim() === filterCustomer;
+      const materialMatch = !filterMaterial || (o["MATERIAL"] || '').trim() === filterMaterial;
       const statusMatch = !filterStatus || o.status === filterStatus;
       
-      const orderDate = new Date(o.createdAt).setHours(0,0,0,0);
+      const orderDate = new Date(o["SO DATE"]).setHours(0,0,0,0);
       const start = startDate ? new Date(startDate).setHours(0,0,0,0) : null;
       const end = endDate ? new Date(endDate).setHours(23,59,59,999) : null;
       
@@ -92,18 +92,21 @@ const Summary: React.FC<Props> = ({ mode }) => {
   const summaryData = useMemo(() => {
     const groups: Record<string, SummaryRow> = {};
     filteredOrders.forEach(o => {
-      const key = `${o.city.trim()}|${o.customer.trim()}|${o.material.trim()}`;
+      const cCity = (o.customerCity || '').trim();
+      const cName = (o.customerName || '').trim();
+      const cMat = (o["MATERIAL"] || '').trim();
+      const key = `${cCity}|${cName}|${cMat}`;
       if (!groups[key]) {
         groups[key] = {
-          city: o.city.trim(),
-          customer: o.customer.trim(),
-          material: o.material.trim(),
+          city: cCity,
+          customer: cName,
+          material: cMat,
           orderCount: 0,
           totalQty: 0
         };
       }
       groups[key].orderCount += 1;
-      groups[key].totalQty += o.qty;
+      groups[key].totalQty += o["ITEM QTY"];
     });
     return Object.values(groups).sort((a, b) => b.totalQty - a.totalQty);
   }, [filteredOrders]);
@@ -111,14 +114,14 @@ const Summary: React.FC<Props> = ({ mode }) => {
   const stats = useMemo(() => {
     return {
       totalOrders: filteredOrders.length,
-      totalQty: filteredOrders.reduce((sum, o) => sum + o.qty, 0),
-      uniqueCustomers: new Set(filteredOrders.map(o => o.customer.trim())).size
+      totalQty: filteredOrders.reduce((sum, o) => sum + o["ITEM QTY"], 0),
+      uniqueCustomers: new Set(filteredOrders.map(o => (o.customerName || '').trim())).size
     };
   }, [filteredOrders]);
 
-  const cities = useMemo(() => Array.from(new Set(activeOrders.map(o => o.city.trim()))).sort() as string[], [activeOrders]);
-  const customers = useMemo(() => Array.from(new Set(activeOrders.map(o => o.customer.trim()))).sort() as string[], [activeOrders]);
-  const materials = useMemo(() => Array.from(new Set(activeOrders.map(o => o.material.trim()))).sort() as string[], [activeOrders]);
+  const cities = useMemo(() => Array.from(new Set(activeOrders.map(o => (o.customerCity || '').trim()))).sort() as string[], [activeOrders]);
+  const customers = useMemo(() => Array.from(new Set(activeOrders.map(o => (o.customerName || '').trim()))).sort() as string[], [activeOrders]);
+  const materials = useMemo(() => Array.from(new Set(activeOrders.map(o => (o["MATERIAL"] || '').trim()))).sort() as string[], [activeOrders]);
 
   const hasActiveFilters = filterCity || filterCustomer || filterMaterial || filterStatus || startDate || endDate;
 

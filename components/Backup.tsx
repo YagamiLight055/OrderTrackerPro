@@ -1,16 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { db, Order, Shipment } from '../db';
+import { db, Order } from '../db';
 import { exportToCSV, parseCSV } from '../services/csvService';
-import { saveSyncConfig, getSyncConfig, clearSupabaseData, importCsvToSupabase, importShipmentsCsvToSupabase, initSupabase } from '../services/syncService';
+import { saveSyncConfig, getSyncConfig, clearSupabaseData, importCsvToSupabase, initSupabase } from '../services/syncService';
 import { getOrders } from '../services/orderService';
-import { getShipments } from '../services/shipmentService';
 import { StorageMode } from '../types';
 
 const Backup: React.FC = () => {
   const [importingLocal, setImportingLocal] = useState(false);
   const [importingCloudOrders, setImportingCloudOrders] = useState(false);
-  const [importingCloudShipments, setImportingCloudShipments] = useState(false);
   const [exportingLocal, setExportingLocal] = useState(false);
   const [exportingCloud, setExportingCloud] = useState(false);
   const [clearingCloud, setClearingCloud] = useState(false);
@@ -35,15 +33,15 @@ const Backup: React.FC = () => {
     alert("Cloud Credentials Updated.");
   };
 
-  const handleExportLocal = async (type: 'orders' | 'shipments') => {
+  const handleExportLocal = async () => {
     setExportingLocal(true);
     try {
-      const data = type === 'orders' ? await db.orders.toArray() : await db.shipments.toArray();
+      const data = await db.orders.toArray();
       if (data.length === 0) {
-        alert(`${type} database is empty.`);
+        alert(`Orders database is empty.`);
         return;
       }
-      exportToCSV(data, `local_${type}_backup_${new Date().toISOString().split('T')[0]}.csv`);
+      exportToCSV(data, `local_orders_backup_${new Date().toISOString().split('T')[0]}.csv`);
     } catch (err) {
       alert("CSV Export failed.");
     } finally {
@@ -51,7 +49,7 @@ const Backup: React.FC = () => {
     }
   };
 
-  const handleExportCloud = async (type: 'orders' | 'shipments') => {
+  const handleExportCloud = async () => {
     const client = initSupabase();
     if (!client) {
       alert("Please configure Cloud credentials first.");
@@ -59,12 +57,12 @@ const Backup: React.FC = () => {
     }
     setExportingCloud(true);
     try {
-      const data = type === 'orders' ? await getOrders(StorageMode.ONLINE) : await getShipments(StorageMode.ONLINE);
+      const data = await getOrders(StorageMode.ONLINE);
       if (data.length === 0) {
-        alert(`No ${type} found in the cloud database.`);
+        alert(`No orders found in the cloud database.`);
         return;
       }
-      exportToCSV(data, `cloud_${type}_export_${new Date().toISOString().split('T')[0]}.csv`);
+      exportToCSV(data, `cloud_orders_export_${new Date().toISOString().split('T')[0]}.csv`);
     } catch (err: any) {
       alert(`Cloud Export failed: ${err.message}`);
     } finally {
@@ -107,41 +105,46 @@ const Backup: React.FC = () => {
 
       let count = 0;
       for (const item of data) {
-        const isShipment = !!(item.orderUuids || item.order_uuids || item.reference);
-        const targetTable = isShipment ? db.shipments : db.orders;
+        const targetTable = db.orders;
         
         if (!item.uuid) item.uuid = crypto.randomUUID();
         
-        // Handle Order Date
-        const dateKey = item.orderDate !== undefined ? 'orderDate' : 
+        // Handle Order Date (soDate)
+        const dateKey = item.soDate !== undefined ? 'soDate' : 
+                        (item.so_date !== undefined ? 'so_date' : 
+                        (item.orderDate !== undefined ? 'orderDate' : 
                         (item.order_date !== undefined ? 'order_date' : 
-                        (item.Date !== undefined ? 'Date' : 'date'));
+                        (item.Date !== undefined ? 'Date' : 'date'))));
         
         const timestamp = parseDateToNoonTimestamp(item[dateKey]);
         if (timestamp) {
-          item.orderDate = timestamp;
-          if (dateKey !== 'orderDate') delete item[dateKey];
+          item.soDate = timestamp;
+          if (dateKey !== 'soDate') delete item[dateKey];
         }
 
-        // Handle Invoice Date
-        if (item.invoiceDate || item.invoice_date) {
-          const invTs = parseDateToNoonTimestamp(item.invoiceDate || item.invoice_date);
-          if (invTs) item.invoiceDate = invTs;
-        }
-
-        // Handle Dispatch Date (for shipments)
-        if (item.dispatchDate || item.dispatch_date) {
-          const dispTs = parseDateToNoonTimestamp(item.dispatchDate || item.dispatch_date);
-          if (dispTs) item.dispatchDate = dispTs;
+        // Handle Invoice Date (invDate)
+        const invDateKey = item.invDate !== undefined ? 'invDate' : 
+                           (item.inv_date !== undefined ? 'inv_date' : 
+                           (item.invoiceDate !== undefined ? 'invoiceDate' : 
+                           (item.invoice_date !== undefined ? 'invoice_date' : null)));
+        
+        if (invDateKey) {
+          const invTs = parseDateToNoonTimestamp(item[invDateKey]);
+          if (invTs) {
+            item.invDate = invTs;
+            if (invDateKey !== 'invDate') delete item[invDateKey];
+          }
         }
 
         if (typeof item.attachments === 'string' && item.attachments.startsWith('[')) {
           try { item.attachments = JSON.parse(item.attachments); } catch { item.attachments = []; }
+        } else if (!Array.isArray(item.attachments)) {
+          item.attachments = [];
         }
-        
-        if (isShipment && typeof (item.orderUuids || item.order_uuids) === 'string') {
-           const raw = item.orderUuids || item.order_uuids;
-           try { item.orderUuids = JSON.parse(raw); } catch { item.orderUuids = raw.split(';').map((u: string) => u.trim()); }
+
+        // Ensure note is at least an empty string
+        if (item.note === undefined || item.note === null) {
+          item.note = '';
         }
 
         const existing = await targetTable.where('uuid').equals(item.uuid).first();
@@ -161,22 +164,22 @@ const Backup: React.FC = () => {
     }
   };
 
-  const handleImportToCloud = async (e: React.ChangeEvent<HTMLInputElement>, type: 'orders' | 'shipments') => {
+  const handleImportToCloud = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !cloudConfig.url) {
       alert("Please configure Cloud credentials first.");
       return;
     }
-    type === 'orders' ? setImportingCloudOrders(true) : setImportingCloudShipments(true);
+    setImportingCloudOrders(true);
     try {
       const data = await parseCSV(file);
-      const count = type === 'orders' ? await importCsvToSupabase(data) : await importShipmentsCsvToSupabase(data);
-      alert(`Cloud Push Success: ${count} ${type} synchronized to Supabase.`);
+      const count = await importCsvToSupabase(data);
+      alert(`Cloud Push Success: ${count} orders synchronized to Supabase.`);
     } catch (err: any) {
       console.error(err);
       alert(`Cloud Push Failed: ${err.message}`);
     } finally {
-      type === 'orders' ? setImportingCloudOrders(false) : setImportingCloudShipments(false);
+      setImportingCloudOrders(false);
       if (e.target) e.target.value = '';
     }
   };
@@ -200,7 +203,6 @@ const Backup: React.FC = () => {
     try {
       await Promise.all([
         db.orders.clear(),
-        db.shipments.clear(),
         db.customersMaster.clear(),
         db.citiesMaster.clear(),
         db.materialsMaster.clear()
@@ -233,8 +235,7 @@ const Backup: React.FC = () => {
            </div>
            <div className="grid grid-cols-1 gap-4">
               <div className="flex gap-2">
-                 <button onClick={() => handleExportLocal('orders')} className="flex-1 p-5 bg-emerald-50 text-emerald-700 rounded-3xl font-black uppercase tracking-widest text-[10px] hover:bg-emerald-600 hover:text-white transition-all">Export Orders</button>
-                 <button onClick={() => handleExportLocal('shipments')} className="flex-1 p-5 bg-emerald-50 text-emerald-700 rounded-3xl font-black uppercase tracking-widest text-[10px] hover:bg-emerald-600 hover:text-white transition-all">Export Archives</button>
+                 <button onClick={handleExportLocal} className="flex-1 p-5 bg-emerald-50 text-emerald-700 rounded-3xl font-black uppercase tracking-widest text-[10px] hover:bg-emerald-600 hover:text-white transition-all">Export Orders</button>
               </div>
               <label className="flex items-center justify-between p-6 bg-white border-2 border-dashed border-emerald-100 text-emerald-600 rounded-3xl hover:bg-emerald-50 cursor-pointer transition-all font-black uppercase tracking-widest text-xs">
                 <input type="file" accept=".csv" className="hidden" onChange={handleImportLocal} disabled={importingLocal} />
@@ -268,21 +269,15 @@ const Backup: React.FC = () => {
                        LWW Policy: Overwrite on UUID Match
                     </p>
                  </div>
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3">
                     <label className="flex items-center justify-between px-5 py-6 bg-blue-600 text-white rounded-[2rem] hover:bg-blue-700 cursor-pointer shadow-xl shadow-blue-100 transition-all font-black uppercase tracking-widest text-[10px]">
-                        <input type="file" accept=".csv" className="hidden" onChange={(e) => handleImportToCloud(e, 'orders')} disabled={importingCloudOrders} />
+                        <input type="file" accept=".csv" className="hidden" onChange={handleImportToCloud} disabled={importingCloudOrders} />
                         <span>{importingCloudOrders ? 'Syncing...' : 'Push Order CSV'}</span>
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                    </label>
-                    <label className="flex items-center justify-between px-5 py-6 bg-white border-2 border-blue-100 text-blue-600 rounded-[2rem] hover:bg-blue-50 cursor-pointer transition-all font-black uppercase tracking-widest text-[10px]">
-                        <input type="file" accept=".csv" className="hidden" onChange={(e) => handleImportToCloud(e, 'shipments')} disabled={importingCloudShipments} />
-                        <span>{importingCloudShipments ? 'Syncing...' : 'Push Archive CSV'}</span>
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
                     </label>
                  </div>
                  <div className="flex gap-2">
-                    <button onClick={() => handleExportCloud('orders')} disabled={!cloudConfig.url} className="flex-1 p-4 bg-gray-50 text-gray-400 rounded-2xl font-black uppercase tracking-widest text-[9px] hover:bg-blue-50 hover:text-blue-600 transition-all">Fetch Order CSV</button>
-                    <button onClick={() => handleExportCloud('shipments')} disabled={!cloudConfig.url} className="flex-1 p-4 bg-gray-50 text-gray-400 rounded-2xl font-black uppercase tracking-widest text-[9px] hover:bg-blue-50 hover:text-blue-600 transition-all">Fetch Archive CSV</button>
+                    <button onClick={handleExportCloud} disabled={!cloudConfig.url} className="flex-1 p-4 bg-gray-50 text-gray-400 rounded-2xl font-black uppercase tracking-widest text-[9px] hover:bg-blue-50 hover:text-blue-600 transition-all">Fetch Order CSV</button>
                  </div>
                  <button onClick={handleWipeCloud} disabled={clearingCloud || !cloudConfig.url} className="p-6 bg-red-50 text-red-600 rounded-3xl hover:bg-red-600 hover:text-white transition-all font-black uppercase tracking-widest text-xs mt-4">Reset Cloud DB</button>
               </div>

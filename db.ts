@@ -3,25 +3,43 @@ import { Dexie, type Table } from 'dexie';
 
 export interface Order {
   id?: number;
+  
+  // User Requested Columns (1-24)
+  "Plant"?: string;
+  "Invoice Number"?: string;
+  "INV DATE"?: number;
+  "SALES ORDER": string;
+  "SO DATE": number;
+  "CUSTOMER": string;
+  "MATERIAL": string;
+  "Material Description"?: string;
+  "ITEM QTY": number;
+  "DELIVERY"?: string;
+  "DEL DATE"?: number;
+  "DEL QTY"?: number;
+  "IND. SHIP. NUMBER"?: string;
+  "COL SHP NO"?: string;
+  "Ship To Party"?: string;
+  "Ship to Party Name"?: string;
+  "Ship to Party Destination"?: string;
+  "Payer"?: string;
+  "Value of Part ordered"?: number;
+  "Order type"?: string;
+  "GC L/R No"?: string;
+  "LR Date"?: number;
+  "Road Permit"?: string;
+  "Truck No"?: string;
+
+  // Existing Required Fields (attached at the end)
   uuid: string;
-  orderNo?: string;
-  orderDate: number; // Business Order Date
-  custCode?: string;
-  customer: string;
-  city: string;
-  zipCode?: string;
-  material: string;
-  qty: number;
   status: string;
-  createdAt: number; // Technical Creation Time
-  updatedAt: number; // Technical Update Time
+  createdAt: number;
+  updatedAt: number;
   note?: string;
   attachments?: string[];
-  invoiceNo?: string;
-  invoiceDate?: number;
-  vehicleNo?: string;
-  transporter?: string;
-  lrNo?: string;
+  reasonForRejection?: string;
+  customerName: string;
+  customerCity: string;
 }
 
 export interface Shipment {
@@ -30,10 +48,15 @@ export interface Shipment {
   reference: string;
   orderUuids: string[];
   attachments: string[];
+  note?: string;
+  dispatchDate: number;
+  invoiceNo?: string;
+  invoiceDate?: number;
+  vehicleNo?: string;
+  transporter?: string;
+  lrNo?: string;
   createdAt: number;
   updatedAt: number;
-  dispatchDate: number;
-  note?: string;
 }
 
 export interface MasterItem {
@@ -51,9 +74,9 @@ export class OrderTrackerDB extends Dexie {
   constructor() {
     super('OrderTrackerDB');
     
-    (this as any).version(12).stores({
-      orders: '++id, &uuid, orderNo, orderDate, custCode, customer, city, material, qty, status, invoiceNo, vehicleNo, lrNo, createdAt, updatedAt',
-      shipments: '++id, &uuid, reference, *orderUuids, createdAt, dispatchDate',
+    this.version(18).stores({
+      orders: '++id, &uuid, customerName, customerCity, status, createdAt, updatedAt',
+      shipments: '++id, &uuid, reference, dispatchDate, createdAt',
       customersMaster: '++id, &name',
       citiesMaster: '++id, &name',
       materialsMaster: '++id, &name'
